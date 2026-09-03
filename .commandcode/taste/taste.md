@@ -1,0 +1,12 @@
+- Prefers Next.js for building web/Shopify apps. Confidence: 0.8
+- Prefers shadcn/ui for theming and UI components. Confidence: 0.8
+- Prefers Shopify-style embedded admin app UI (clean admin layout, grouped sidebar, light gray background) over a generic website look. Confidence: 0.8
+- Prefers green as the primary/highlight color for Shopify apps. Confidence: 0.7
+- Prefers building the top-level UI/structure first before wiring up functionality. Confidence: 0.6
+- Prefers card/grid layouts to show many items at once for scannability over long lists. Confidence: 0.7
+- Prefers progressive disclosure: reveal secondary actions (e.g., edit/preview) only after a feature is enabled. Confidence: 0.6
+- Prefers dedicated setup pages (rather than inline/modals) when configuring a feature's automation. Confidence: 0.6
+- Values preview options when editing templates/content. Confidence: 0.6
+- Prefers reusable UI blocks for repeatable elements (e.g., follow-up messages reuse the same field set). Confidence: 0.5
+- Prefers automation/message editors to include a template selector plus template-variable insertion. Confidence: 0.6
+- Prefers timing/delay controls that offer preset options alongside manual custom input. Confidence: 0.6

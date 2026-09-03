@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Shell(node --version)",
+      "Shell(npm:*)",
+      "Shell(git:*)",
+      "Shell(npx create-next-app@latest . --typescript --tailwind --eslint --app --src-dir --import-alias \"@/*\" --use-npm --yes)",
+      "Shell(npx create-next-app@latest shopify-app-tmp --typescript --tailwind --eslint --app --src-dir --import-alias \"@/*\" --use-npm --yes)",
+      "powershell",
+      "Shell(node -p \"require('./node_modules/next/package.json').version\")",
+      "Shell(npx shadcn@latest init --defaults --yes)",
+      "Shell(npx shadcn@latest add button input card label form separator badge avatar dropdown-menu sheet sidebar --yes)",
+      "Shell(npx eslint .)",
+      "Shell(npm ls eslint && dir node_modules\\.bin\\eslint* 2>nul)",
+      "Shell(node -e \"const p=require('./package.json'); console.log(JSON.stringify(p.devDependencies,null,2))\")",
+      "Shell(dir node_modules\\eslint 2>nul & dir node_modules\\eslint-config-next 2>nul)",
+      "Shell(node -e \"console.log(require('fs').existsSync('node_modules/eslint'))\")",
+      "Shell(node -e console.log(require('fs').existsSync('node_modules/eslint')))",
+      "Shell(node -e console.log(require('fs').readdirSync('node_modules').length))",
+      "Shell(node -e \"console.log(require('fs').readdirSync('node_modules').slice(0,50).join('\\n'))\")",
+      "Shell(node -e \"const fs=require('fs'); const p='node_modules/eslint'; console.log('exists', fs.existsSync(p)); if(fs.existsSync(p)) console.log(fs.readdirSync(p).slice(0,20))\")",
+      "Shell(node -e \"const fs=require('fs'); console.log(fs.readdirSync('node_modules').filter(x=>x.includes('eslint')).join('\\n'))\")"
+    ],
+    "deny": [],
+    "defaultMode": "default"
+  }
+}
