@@ -1,120 +1,250 @@
-export type TemplateOption = {
-  value: string
-  label: string
-  body: string
-  variables: string[]
-}
+import type { IWebhookFlow, IWebhookFlowNode, IWebhookFlowEdge } from "@/lib/pinggo-api";
+import { analyzeTemplate } from "@/lib/template-analysis";
 
-export type VariableOption = {
-  value: string
-  label: string
-  sample: string
-}
+/**
+ * Helpers for building/reading a webhooks-v2 message flow.
+ *
+ * A Shopify automation maps to a Pinggo "Advance Webhooks" (webhooks-v2) flow:
+ *
+ *   triggerNode ──▶ followUpTemplateNode(s)
+ *
+ * The trigger node captures the incoming Shopify webhook payload, and each
+ * follow-up template node sends a WhatsApp message template (with variables
+ * mapped to webhook JSON paths) after an optional delay.
+ *
+ * The `messageData` shape must match what Pinggo's `webhook-follow-up-flow-executor`
+ * reads at send time:
+ *   messageData.messageData.name            → template name
+ *   messageData.messageData.language        → language code
+ *   messageData.messageData.fullTemplateData→ full WhatsApp template object
+ *   messageData.analyzedTemplate            → TemplateAnalysis (variable counts)
+ *   messageData.variables                   → { field_N: { value, isCustom? } }
+ */
 
-export type TimingOption = {
-  value: string
-  label: string
-  custom?: boolean
-}
+export type DelayUnit = "minutes" | "hours" | "days";
+
+export type TemplateVariableValue = {
+  value: string; // JSON path or custom string
+  isCustom?: boolean;
+  fallback?: string;
+};
 
 export type MessageStep = {
-  id: string
-  templateId: string
-  body: string
-  timing: string
-  customValue: string
-  customUnit: "minutes" | "hours" | "days"
-}
-
-export const templates: TemplateOption[] = [
-  {
-    value: "order-confirmation",
-    label: "Order confirmation",
-    body: "Hi {{customerName}}, thanks for shopping at {{storeName}}. Your order {{orderNumber}} is confirmed and we will notify you once it ships.",
-    variables: ["customerName", "storeName", "orderNumber"],
-  },
-  {
-    value: "payment-confirmation",
-    label: "Payment confirmation",
-    body: "Hi {{customerName}}, your payment of {{orderTotal}} for order {{orderNumber}} has been received. A receipt has been sent to your WhatsApp.",
-    variables: ["customerName", "orderTotal", "orderNumber"],
-  },
-  {
-    value: "shipping-update",
-    label: "Shipping update",
-    body: "Hi {{customerName}}, your order {{orderNumber}} has shipped. Track your delivery here: {{trackingLink}}",
-    variables: ["customerName", "orderNumber", "trackingLink"],
-  },
-  {
-    value: "delivery-confirmation",
-    label: "Delivery confirmation",
-    body: "Hi {{customerName}}, your order {{orderNumber}} has been delivered. We hope you love it! Reply with any questions.",
-    variables: ["customerName", "orderNumber"],
-  },
-  {
-    value: "abandoned-cart",
-    label: "Abandoned cart recovery",
-    body: "Hi {{customerName}}, you left something in your cart. Use code {{discountCode}} for {{discountPercent}} off and complete your order today.",
-    variables: ["customerName", "discountCode", "discountPercent"],
-  },
-  {
-    value: "payment-reminder",
-    label: "Payment reminder",
-    body: "Hi {{customerName}}, a payment of {{orderTotal}} is due for order {{orderNumber}}. Pay securely here: {{paymentLink}}",
-    variables: ["customerName", "orderTotal", "orderNumber", "paymentLink"],
-  },
-]
-
-export const variables: VariableOption[] = [
-  { value: "customerName", label: "Customer name", sample: "Aarav" },
-  { value: "storeName", label: "Store name", sample: "PingGo Store" },
-  { value: "orderNumber", label: "Order number", sample: "#10024" },
-  { value: "orderTotal", label: "Order total", sample: "₹1,499" },
-  { value: "trackingLink", label: "Tracking link", sample: "pinggo.app/track/10024" },
-  { value: "discountCode", label: "Discount code", sample: "WELCOME10" },
-  { value: "discountPercent", label: "Discount percent", sample: "10%" },
-  { value: "paymentLink", label: "Payment link", sample: "pinggo.app/pay/10024" },
-  { value: "etaDate", label: "Delivery ETA", sample: "Aug 21" },
-]
-
-export const timingOptions: TimingOption[] = [
-  { value: "immediately", label: "Immediately" },
-  { value: "1m", label: "After 1 minute" },
-  { value: "5m", label: "After 5 minutes" },
-  { value: "30m", label: "After 30 minutes" },
-  { value: "1h", label: "After 1 hour" },
-  { value: "6h", label: "After 6 hours" },
-  { value: "1d", label: "After 1 day" },
-  { value: "custom", label: "Custom delay", custom: true },
-]
+  id: string;
+  templateId: string;
+  templateName: string;
+  /** Full WhatsApp template object (with `components`), needed by the executor. */
+  template?: Record<string, unknown>;
+  /** Delay before sending this message (0 = immediately). */
+  delayAmount: number;
+  delayUnit: DelayUnit;
+  /** template variable key (e.g. "field_1") → webhook path or custom value */
+  variables: Record<string, TemplateVariableValue>;
+};
 
 export const customUnitOptions = [
   { value: "minutes", label: "Minutes" },
   { value: "hours", label: "Hours" },
   { value: "days", label: "Days" },
-]
+] as const;
 
-export function getTemplate(id: string) {
-  return templates.find((template) => template.value === id) ?? templates[0]
+const TRIGGER_NODE_ID = "trigger-node";
+
+function makeId(prefix: string): string {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-export function getVariableSamples() {
-  return Object.fromEntries(variables.map((variable) => [variable.value, variable.sample]))
-}
-
-export function renderMessage(body: string) {
-  const samples = getVariableSamples()
-  return body.replace(/\{\{(\w+)\}\}/g, (_, key: string) => samples[key] ?? `{{${key}}}`)
-}
-
-export function createStep(index: number): MessageStep {
-  const template = templates[0]
+export function emptyStep(): MessageStep {
   return {
-    id: `step-${Date.now()}-${index}`,
-    templateId: template.value,
-    body: template.body,
-    timing: "immediately",
-    customValue: "1",
-    customUnit: "hours",
+    id: makeId("step"),
+    templateId: "",
+    templateName: "",
+    template: undefined,
+    delayAmount: 0,
+    delayUnit: "minutes",
+    variables: {},
+  };
+}
+
+export function buildTriggerNode(): IWebhookFlowNode {
+  return {
+    id: TRIGGER_NODE_ID,
+    type: "triggerNode",
+    position: { x: 80, y: 200 },
+    data: {
+      nodeType: "trigger",
+      status: "pending",
+      messageData: undefined,
+    },
+    deletable: false,
+  };
+}
+
+export function buildTemplateNode(
+  step: MessageStep,
+  index: number
+): IWebhookFlowNode {
+  const template = step.template as
+    | { name?: string; language?: string; components?: Array<Record<string, unknown>>; category?: string }
+    | undefined;
+
+  const data: Record<string, unknown> = {
+    nodeType: "follow-up-template",
+    label: `Message ${index + 1}`,
+    order: index + 1,
+    status: "pending",
+    scheduledSendTime: null,
+    buttons: [],
+    flowFormRequired: false,
+    messageData: step.templateId
+      ? {
+          messageData: {
+            name: step.templateName || template?.name,
+            language: template?.language,
+            fullTemplateData: template,
+          },
+          analyzedTemplate: template ? analyzeTemplate(template) : undefined,
+          variables: step.variables,
+        }
+      : undefined,
+  };
+
+  return {
+    id: step.id,
+    type: "followUpTemplateNode",
+    position: { x: 320 + index * 300, y: 200 },
+    data,
+    deletable: true,
+  };
+}
+
+export type ContactSettings = {
+  /** WhatsApp business id */
+  businessId?: string;
+  /** WhatsApp phone-number id used to send messages */
+  phoneNumberId?: string;
+  /** Sender phone number (human-readable) */
+  senderPhoneNumber?: string;
+  /** JSON path in the webhook payload holding the recipient phone number */
+  contactPhoneNumber?: string;
+  /** Whether the recipient phone already includes a country code */
+  hasCountryCode?: boolean;
+  codeType?: "isd" | "iso";
+  selectedCountry?: string;
+  /** Fixed recipient phone (overrides contactPhoneNumber) */
+  customRecipientPhone?: string;
+  /** Sample payload used for variable resolution */
+  webhookSample?: Record<string, unknown>;
+};
+
+export function buildFlowFromSteps({
+  vendorId,
+  workflowId,
+  name,
+  steps,
+  contactSettings,
+}: {
+  vendorId: string;
+  workflowId: string;
+  name: string;
+  steps: MessageStep[];
+  contactSettings?: ContactSettings;
+}): IWebhookFlow {
+  const nodes: IWebhookFlowNode[] = [buildTriggerNode()];
+  const edges: IWebhookFlowEdge[] = [];
+
+  let previousNodeId = TRIGGER_NODE_ID;
+
+  steps.forEach((step, index) => {
+    // A delay node is inserted only for follow-ups after the first message.
+    if (index > 0 && step.delayAmount > 0) {
+      const delayId = makeId("delay");
+      nodes.push({
+        id: delayId,
+        type: "delayNode",
+        position: { x: 320 + index * 300 - 150, y: 200 },
+        data: {
+          nodeType: "delay",
+          delayAmount: step.delayAmount,
+          delayUnit: step.delayUnit,
+        },
+      });
+      edges.push({
+        id: makeId("edge"),
+        source: previousNodeId,
+        target: delayId,
+        sourceHandle: null,
+        targetHandle: null,
+        type: "followUpEdge",
+        animated: true,
+      });
+      previousNodeId = delayId;
+    }
+
+    nodes.push(buildTemplateNode(step, index));
+    edges.push({
+      id: makeId("edge"),
+      source: previousNodeId,
+      target: step.id,
+      sourceHandle: null,
+      targetHandle: null,
+      type: "followUpEdge",
+      animated: true,
+    });
+    previousNodeId = step.id;
+  });
+
+  return {
+    vendorId,
+    workflowId,
+    name,
+    nodes,
+    edges,
+    ...(contactSettings ? { contactSettings } : {}),
+  };
+}
+
+export function stepsFromFlow(flow: IWebhookFlow): MessageStep[] {
+  const steps: MessageStep[] = [];
+
+  let pendingDelayAmount = 0;
+  let pendingDelayUnit: DelayUnit = "minutes";
+
+  for (const node of flow.nodes ?? []) {
+    if (node.type === "delayNode") {
+      const data = (node.data ?? {}) as {
+        delayAmount?: number;
+        delayUnit?: DelayUnit;
+      };
+      pendingDelayAmount = data.delayAmount ?? 0;
+      pendingDelayUnit = data.delayUnit ?? "minutes";
+      continue;
+    }
+    if (node.type !== "followUpTemplateNode") continue;
+
+    const data = (node.data ?? {}) as {
+      messageData?: {
+        messageData?: { name?: string; language?: string; fullTemplateData?: Record<string, unknown> };
+        variables?: Record<string, TemplateVariableValue>;
+      };
+    };
+    const template = data.messageData?.messageData?.fullTemplateData;
+    const templateName = data.messageData?.messageData?.name ?? "";
+    const templateId = (template as { id?: unknown } | undefined)?.id ?? "";
+
+    steps.push({
+      id: node.id,
+      templateId: typeof templateId === "string" ? templateId : "",
+      templateName,
+      template,
+      delayAmount: pendingDelayAmount,
+      delayUnit: pendingDelayUnit,
+      variables: data.messageData?.variables ?? {},
+    });
+
+    pendingDelayAmount = 0;
+    pendingDelayUnit = "minutes";
   }
+
+  return steps;
 }

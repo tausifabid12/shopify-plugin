@@ -1,10 +1,9 @@
-import { KeyRound, Settings, UserRound } from "lucide-react"
+import { Settings, UserRound } from "lucide-react"
 
 import { getPinggoCredentials } from "@/lib/pinggo"
 
 export default async function SettingsPage() {
-  const { apiKey, userId } = await getPinggoCredentials()
-  const maskedApiKey = apiKey ? `${apiKey.slice(0, 8)}••••${apiKey.slice(-4)}` : "—"
+  const { userId } = await getPinggoCredentials()
 
   return (
     <div className="flex flex-col gap-8">
@@ -25,26 +24,14 @@ export default async function SettingsPage() {
       <div className="flex flex-col gap-3">
         <h2 className="text-sm font-semibold text-foreground">PingGo credentials</h2>
         <div className="rounded-xl border border-border bg-white shadow-[0_1px_3px_0_rgb(0,0,0,0.06)]">
-          <div className="flex items-center justify-between gap-4 border-b border-border px-5 py-4">
+          <div className="flex items-center justify-between gap-4 px-5 py-4">
             <div className="flex items-center gap-3 min-w-0">
               <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted">
                 <UserRound className="size-4 text-muted-foreground" />
               </div>
               <div className="min-w-0">
-                <p className="text-xs text-muted-foreground">User ID</p>
+                <p className="text-xs text-muted-foreground">PingGo user ID</p>
                 <p className="truncate font-mono text-sm font-medium text-foreground">{userId}</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between gap-4 px-5 py-4">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted">
-                <KeyRound className="size-4 text-muted-foreground" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs text-muted-foreground">API key</p>
-                <p className="truncate font-mono text-sm font-medium text-foreground">{maskedApiKey}</p>
               </div>
             </div>
           </div>

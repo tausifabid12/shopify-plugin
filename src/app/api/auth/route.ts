@@ -20,9 +20,19 @@ export async function GET(request: NextRequest) {
         )
     }
 
+    const appUrl = process.env.APP_URL
+
+    // PingGo auth must happen BEFORE Shopify OAuth so the store can be linked
+    // to the authenticated Pinggo user. If no Pinggo session exists yet, send
+    // the merchant to the login/register screen with the shop carried through.
+    if (!request.cookies.get("pinggo_token")?.value) {
+        const loginUrl = new URL("/", request.url)
+        loginUrl.searchParams.set("shop", shop)
+        return Response.redirect(loginUrl, 302)
+    }
+
     const apiKey = process.env.SHOPIFY_API_KEY
     const scopes = process.env.SHOPIFY_SCOPES
-    const appUrl = process.env.APP_URL
 
     if (!apiKey || !scopes || !appUrl) {
         console.error(
@@ -39,22 +49,32 @@ export async function GET(request: NextRequest) {
     // A random nonce helps prevent CSRF on the callback
     const nonce = crypto.randomUUID()
 
+    // Persist the shop domain so it survives the PingGo login/register step.
+    const shopCookieParts = [
+      `shopify_shop=${encodeURIComponent(shop)}`,
+      "HttpOnly",
+      "Path=/",
+      "SameSite=Lax",
+      "Max-Age=1800", // 30 minutes — enough for login/register + OAuth
+    ]
+    if (process.env.NODE_ENV === "production") shopCookieParts.push("Secure")
+
     const installUrl = new URL(`https://${shop}/admin/oauth/authorize`)
     installUrl.searchParams.set("client_id", apiKey)
     installUrl.searchParams.set("scope", scopes)
     installUrl.searchParams.set("redirect_uri", redirectUri)
     installUrl.searchParams.set("state", nonce)
 
-    // Persist the nonce in a short-lived cookie so we can verify it on callback
-    const response = Response.redirect(installUrl.toString(), 302)
-
-    // Note: Response.redirect returns a plain Response; we need to cast to set
-    // headers. We build it manually so we can attach Set-Cookie.
+    // Note: Response.redirect returns a plain Response; we build it manually so
+    // we can attach the nonce + shop cookies.
     return new Response(null, {
         status: 302,
         headers: {
             Location: installUrl.toString(),
-            "Set-Cookie": buildNonceCookie(nonce),
+            "Set-Cookie": [
+                buildNonceCookie(nonce),
+                shopCookieParts.join("; "),
+            ].join(", "),
         },
     })
 }

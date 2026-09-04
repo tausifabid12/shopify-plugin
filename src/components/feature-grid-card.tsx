@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import Link from "next/link"
 import { AlertCircle, Loader2, Pencil, Sparkles } from "lucide-react"
 
@@ -8,73 +8,46 @@ import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
 import type { FeatureItem } from "@/lib/feature-types"
 import { useShopifyDefinitions } from "@/components/shopify-definitions-provider"
-import { saveNotificationConfig } from "@/lib/pinggo-api"
 
 export function FeatureGridCard({ feature }: { feature: FeatureItem }) {
-  const { notificationConfigs, definitionByTopic, apiKey, loading, reload } =
+  const { shopifyWebhooksByTopic, setAutomationEnabled, loading } =
     useShopifyDefinitions()
   const Icon = feature.icon
 
-  // Derive the persisted enabled state from the loaded configs
+  // Persisted enabled state: a Shopify webhook exists and is active for this topic.
   const persistedEnabled = feature.shopifyTopic
-    ? (notificationConfigs.find((c) => c.shopifyTopic === feature.shopifyTopic)?.enabled ?? false)
+    ? shopifyWebhooksByTopic[feature.shopifyTopic]?.status === "active"
     : false
 
-  // Optimistic local state — starts as null (unset) until context loads
+  // Optimistic local state — starts null (unset) until context loads.
   const [optimisticEnabled, setOptimisticEnabled] = useState<boolean | null>(null)
+  const [lastSynced, setLastSynced] = useState<boolean | null>(null)
   const [toggling, setToggling] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Once context finishes loading, sync local state to server state
-  useEffect(() => {
-    if (!loading) {
-      setOptimisticEnabled(persistedEnabled)
-    }
-  }, [loading, persistedEnabled])
+  // Sync local state to server state once loading completes (and after reloads).
+  if (!loading && lastSynced !== persistedEnabled) {
+    setLastSynced(persistedEnabled)
+    setOptimisticEnabled(persistedEnabled)
+  }
 
-  // What the UI actually shows
   const enabled = optimisticEnabled ?? persistedEnabled
 
   async function handleToggle(checked: boolean) {
     setError(null)
 
-    // No shopify topic — toggle is a pure local UI thing
+    // No shopify topic — toggle is a pure local UI thing.
     if (!feature.shopifyTopic) {
       setOptimisticEnabled(checked)
       return
     }
 
-    // No API key — we're not connected yet
-    if (!apiKey) {
-      setError("Not connected to PingGo.")
-      return
-    }
-
-    // Definitions haven't loaded yet or this topic has no definition configured
-    const definition = definitionByTopic[feature.shopifyTopic]
-    if (!definition) {
-      setError("No webhook definition found for this feature. Contact support.")
-      return
-    }
-
-    // Flip optimistically immediately so the UI responds
     setOptimisticEnabled(checked)
     setToggling(true)
 
     try {
-      const existingConfig = notificationConfigs.find(
-        (c) => c.shopifyTopic === feature.shopifyTopic
-      )
-      await saveNotificationConfig(apiKey, {
-        webhookDefinitionId: definition._id,
-        shopifyTopic: feature.shopifyTopic,
-        enabled: checked,
-        messageTemplate: existingConfig?.messageTemplate ?? "",
-        phoneNumberId: existingConfig?.phoneNumberId,
-      })
-      reload()
+      await setAutomationEnabled(feature.shopifyTopic, feature.title, checked)
     } catch (err) {
-      // Roll back the optimistic flip
       setOptimisticEnabled(!checked)
       setError(err instanceof Error ? err.message : "Failed to save. Try again.")
       console.error("[FeatureGridCard] toggle failed", err)

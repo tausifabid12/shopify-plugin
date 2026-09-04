@@ -20,7 +20,7 @@ export function proxy(request: NextRequest) {
     }
 
     const hasPinggoSession =
-        Boolean(request.cookies.get("pinggo_api_key")?.value) &&
+        Boolean(request.cookies.get("pinggo_token")?.value) &&
         Boolean(request.cookies.get("pinggo_user_id")?.value)
 
     const hasShopifySession = Boolean(

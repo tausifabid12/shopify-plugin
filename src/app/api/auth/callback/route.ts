@@ -1,8 +1,10 @@
 import { cookies } from "next/headers"
 import type { NextRequest } from "next/server"
+import { pinggoLinkStoreRequest } from "@/lib/pinggo-auth"
 
 const SHOPIFY_SESSION_COOKIE = "shopify_session"
 const NONCE_COOKIE = "shopify_oauth_nonce"
+const PINGGO_TOKEN_COOKIE = "pinggo_token"
 
 /**
  * GET /api/auth/callback
@@ -60,8 +62,14 @@ export async function GET(request: NextRequest) {
 
     // ── 3. Exchange code for permanent access token ───────────────────────────
     let accessToken: string
+    let scope = searchParams.get("scope") ?? ""
+    let storeId: string | undefined
+
     try {
-        accessToken = await exchangeCodeForToken({ shop, code, apiKey, apiSecret })
+        const exchange = await exchangeCodeForToken({ shop, code, apiKey, apiSecret })
+        accessToken = exchange.accessToken
+        scope = exchange.scope || scope
+        storeId = exchange.storeId
     } catch (err) {
         console.error("[callback] Token exchange failed:", err)
         return Response.json(
@@ -70,8 +78,28 @@ export async function GET(request: NextRequest) {
         )
     }
 
-    // ── 4. Persist session & clear the nonce cookie ───────────────────────────
-    const sessionPayload = JSON.stringify({ shop, accessToken })
+    // ── 4. Link the store to the authenticated PingGo user (server-side) ──────
+    const pinggoToken = cookieStore.get(PINGGO_TOKEN_COOKIE)?.value
+    if (pinggoToken) {
+        try {
+            await pinggoLinkStoreRequest(pinggoToken, {
+                shopDomain: shop,
+                shopUrl: `https://${shop}`,
+                accessToken,
+                storeId,
+                scope,
+            })
+        } catch (err) {
+            // Non-fatal: the local session still works, but log for visibility.
+            console.error("[callback] Failed to link Shopify store to PingGo:", err)
+        }
+    }
+
+    // ── 5. Persist session & clear the nonce cookie ───────────────────────────
+    // The access token is stored server-side (via /shopify/link above) and is
+    // intentionally NOT persisted to the browser. This cookie only carries
+    // non-sensitive store metadata for the dashboard UI.
+    const sessionPayload = JSON.stringify({ shop, storeId, scope })
     const isProduction = process.env.NODE_ENV === "production"
 
     const sessionCookieParts = [
@@ -120,7 +148,7 @@ async function exchangeCodeForToken({
     code: string
     apiKey: string
     apiSecret: string
-}): Promise<string> {
+}): Promise<{ accessToken: string; scope?: string; storeId?: string }> {
     const res = await fetch(
         `https://${shop}/admin/oauth/access_token`,
         {
@@ -139,13 +167,40 @@ async function exchangeCodeForToken({
         throw new Error(`Shopify returned ${res.status}: ${text}`)
     }
 
-    const json = await res.json() as { access_token?: string }
+    const json = await res.json() as {
+        access_token?: string
+        scope?: string
+        associated_user_scope?: string
+    }
 
     if (!json.access_token) {
         throw new Error("No access_token in Shopify response.")
     }
 
-    return json.access_token
+    return {
+        accessToken: json.access_token,
+        scope: json.scope,
+        storeId: await fetchStoreId(shop, json.access_token),
+    }
+}
+
+/** Resolve the Shopify store id (gid://shopify/Shop/<id>) for a given shop. */
+async function fetchStoreId(shop: string, accessToken: string): Promise<string | undefined> {
+    try {
+        const res = await fetch(
+            `https://${shop}/admin/api/2024-04/shop.json`,
+            {
+                headers: {
+                    "X-Shopify-Access-Token": accessToken,
+                },
+            }
+        )
+        if (!res.ok) return undefined
+        const json = await res.json() as { shop?: { id?: string } }
+        return json.shop?.id ? String(json.shop.id) : undefined
+    } catch {
+        return undefined
+    }
 }
 
 /**

@@ -1,11 +1,10 @@
 "use client"
 
-import { useState } from "react"
-import { Clock, Trash2 } from "lucide-react"
+import { useMemo, useState } from "react"
+import { Plus, Search, Trash2, X } from "lucide-react"
 
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
 import {
   Select,
   SelectContent,
@@ -14,38 +13,23 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
+import { useShopifyDefinitions } from "@/components/shopify-definitions-provider"
+import {
   customUnitOptions,
-  getTemplate,
-  renderMessage,
-  templates,
-  timingOptions,
-  variables,
   type MessageStep,
+  type TemplateVariableValue,
 } from "@/lib/automation"
-import { cn } from "@/lib/utils"
+import type { IVariableDefinition } from "@/lib/pinggo-api"
 
-function WhatsAppPreview({ body }: { body: string }) {
-  const rendered = renderMessage(body)
-  return (
-    <div className="flex flex-col gap-3 rounded-xl bg-[#dfe6ea] p-4">
-      {/* Chat header */}
-      <div className="flex items-center gap-2.5 border-b border-black/10 pb-3">
-        <div className="flex size-7 items-center justify-center rounded-full bg-[#00a884] text-[11px] font-bold text-white">
-          S
-        </div>
-        <span className="text-sm font-medium text-[#111b21]">Store</span>
-        <span className="ml-auto text-[11px] text-[#667781]">9:41 AM</span>
-      </div>
-      {/* Bubble */}
-      <div className="max-w-[88%] self-start rounded-xl rounded-tl-none bg-white px-3.5 py-2.5 shadow-sm">
-        <p className="whitespace-pre-wrap text-sm leading-relaxed text-[#111b21]">
-          {rendered || (
-            <span className="italic text-[#aaa]">Start typing your message…</span>
-          )}
-        </p>
-      </div>
-    </div>
-  )
+function countTemplateVariables(components: Array<Record<string, unknown>> | undefined): number {
+  if (!components) return 0
+  const body = components.find((c) => c.type === "BODY")
+  const text = typeof body?.text === "string" ? body.text : ""
+  return (text.match(/\{\{\d+\}\}/g) ?? []).length
 }
 
 export function MessageStepEditor({
@@ -54,29 +38,48 @@ export function MessageStepEditor({
   onChange,
   onRemove,
   removable,
+  variables,
 }: {
   step: MessageStep
   index: number
   onChange: (step: MessageStep) => void
   onRemove: () => void
   removable: boolean
+  variables: IVariableDefinition[]
 }) {
-  const [customTiming, setCustomTiming] = useState(step.timing === "custom")
-  const template = getTemplate(step.templateId)
+  const { templates } = useShopifyDefinitions()
+  const selectedTemplate = templates.find((t) => t.id === step.templateId)
+  const variableCount = countTemplateVariables(selectedTemplate?.components)
 
-  function updateTemplate(templateId: string) {
-    const next = getTemplate(templateId)
-    onChange({ ...step, templateId, body: next.body })
+  const variableKeys = useMemo(() => {
+    return Array.from({ length: variableCount }, (_, i) => `field_${i + 1}`)
+  }, [variableCount])
+
+  const [varSearch, setVarSearch] = useState("")
+
+  function updateTemplate(value: string | null) {
+    if (!value) return
+    const tpl = templates.find((t) => t.id === value)
+    onChange({
+      ...step,
+      templateId: value,
+      templateName: tpl?.name ?? "",
+      template: tpl as unknown as Record<string, unknown>,
+      variables: {},
+    })
   }
 
-  function insertVariable(variable: string) {
-    onChange({ ...step, body: `${step.body}{{${variable}}}` })
+  function setVariable(key: string, value: TemplateVariableValue) {
+    onChange({ ...step, variables: { ...step.variables, [key]: value } })
   }
 
-  function updateTiming(timing: string) {
-    setCustomTiming(timing === "custom")
-    onChange({ ...step, timing })
-  }
+  const filteredVariables = useMemo(() => {
+    const q = varSearch.toLowerCase()
+    return variables.filter(
+      (v) =>
+        v.path.toLowerCase().includes(q) || v.label.toLowerCase().includes(q)
+    )
+  }, [variables, varSearch])
 
   return (
     <div className="rounded-xl border border-border bg-white shadow-[0_1px_3px_0_rgb(0,0,0,0.06)]">
@@ -86,9 +89,7 @@ export function MessageStepEditor({
           <div className="flex size-6 items-center justify-center rounded-full bg-[#008060] text-[11px] font-semibold text-white">
             {index + 1}
           </div>
-          <h3 className="text-sm font-semibold text-foreground">
-            Message {index + 1}
-          </h3>
+          <h3 className="text-sm font-semibold text-foreground">Message {index + 1}</h3>
         </div>
         {removable && (
           <button
@@ -102,133 +103,220 @@ export function MessageStepEditor({
         )}
       </div>
 
-      <div className="grid gap-6 p-5 lg:grid-cols-2">
-        {/* Left: editor */}
-        <div className="flex flex-col gap-4">
-          {/* Template */}
-          <div className="flex flex-col gap-1.5">
-            <Label className="text-sm font-medium">Message template</Label>
-            <Select value={step.templateId} onValueChange={updateTemplate}>
-              <SelectTrigger className="h-9 bg-white shadow-none">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {templates.map((t) => (
-                  <SelectItem key={t.value} value={t.value}>
-                    {t.label}
+      <div className="flex flex-col gap-4 p-5">
+        {/* Template selector */}
+        <div className="flex flex-col gap-1.5">
+          <Label className="text-sm font-medium">Message template</Label>
+          <Select value={step.templateId} onValueChange={updateTemplate}>
+            <SelectTrigger className="h-9 w-full bg-white shadow-none">
+              <SelectValue placeholder="Select a WhatsApp template" />
+            </SelectTrigger>
+            <SelectContent>
+              {templates.length === 0 ? (
+                <div className="px-2 py-3 text-sm text-muted-foreground">
+                  No templates available.
+                </div>
+              ) : (
+                templates.map((t) => (
+                  <SelectItem key={t.id} value={t.id}>
+                    {t.name}
                   </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Variable chips */}
-          <div className="flex flex-col gap-1.5">
-            <Label className="text-sm font-medium">Insert variable</Label>
-            <div className="flex flex-wrap gap-1.5">
-              {template.variables.map((v) => {
-                const def = variables.find((x) => x.value === v)
-                return (
-                  <button
-                    key={v}
-                    type="button"
-                    title={def?.label}
-                    onClick={() => insertVariable(v)}
-                    className="rounded-md border border-border bg-muted/40 px-2 py-1 font-mono text-[11px] text-[#008060] transition-colors hover:border-[#008060]/30 hover:bg-[#008060]/5"
-                  >
-                    {`{{${v}}}`}
-                  </button>
-                )
-              })}
-            </div>
+                ))
+              )}
+            </SelectContent>
+          </Select>
+          {selectedTemplate && (
             <p className="text-xs text-muted-foreground">
-              Click a variable to append it to the message.
+              {selectedTemplate.status} · {selectedTemplate.language} · {selectedTemplate.category}
             </p>
-          </div>
-
-          {/* Body */}
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor={`body-${step.id}`} className="text-sm font-medium">
-              Message content
-            </Label>
-            <Textarea
-              id={`body-${step.id}`}
-              value={step.body}
-              onChange={(e) => onChange({ ...step, body: e.target.value })}
-              className="min-h-27 bg-white shadow-none"
-              placeholder="Hi {{customerName}}, your order {{orderNumber}} is confirmed!"
-            />
-          </div>
-
-          {/* Timing */}
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor={`timing-${step.id}`} className="text-sm font-medium">
-              Send timing
-            </Label>
-            <Select value={step.timing} onValueChange={updateTiming}>
-              <SelectTrigger id={`timing-${step.id}`} className="h-9 bg-white shadow-none">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {timingOptions.map((o) => (
-                  <SelectItem key={o.value} value={o.value}>
-                    {o.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {customTiming && (
-            <div className="flex items-end gap-2">
-              <div className="flex flex-1 flex-col gap-1.5">
-                <Label htmlFor={`cv-${step.id}`} className="text-sm font-medium">
-                  Delay amount
-                </Label>
-                <Input
-                  id={`cv-${step.id}`}
-                  type="number"
-                  min="1"
-                  value={step.customValue}
-                  onChange={(e) => onChange({ ...step, customValue: e.target.value })}
-                  className="h-9 bg-white shadow-none"
-                />
-              </div>
-              <div className="flex flex-1 flex-col gap-1.5">
-                <Label htmlFor={`cu-${step.id}`} className="text-sm font-medium">
-                  Unit
-                </Label>
-                <Select
-                  value={step.customUnit}
-                  onValueChange={(v) =>
-                    onChange({ ...step, customUnit: v as MessageStep["customUnit"] })
-                  }
-                >
-                  <SelectTrigger id={`cu-${step.id}`} className="h-9 bg-white shadow-none">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {customUnitOptions.map((o) => (
-                      <SelectItem key={o.value} value={o.value}>
-                        {o.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
           )}
         </div>
 
-        {/* Right: preview */}
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center gap-1.5 text-sm font-medium text-foreground">
-            <Clock className="size-4 text-muted-foreground" />
-            Message preview
+        {/* Webhook variable mapping */}
+        {selectedTemplate && variableCount > 0 && (
+          <div className="flex flex-col gap-2">
+            <Label className="text-sm font-medium">Map template variables</Label>
+            <p className="text-xs text-muted-foreground">
+              Map each template variable to a webhook field.
+            </p>
+            {variableKeys.map((key) => (
+              <VariableRow
+                key={key}
+                label={`Variable {{${key.replace("field_", "")}}}`}
+                value={step.variables[key]?.value ?? ""}
+                variables={filteredVariables}
+                onSearchChange={setVarSearch}
+                onSelect={(path) => setVariable(key, { value: path })}
+                onClear={() => setVariable(key, { value: "" })}
+                onUseCustom={(custom) => setVariable(key, { value: custom, isCustom: true })}
+              />
+            ))}
           </div>
-          <WhatsAppPreview body={step.body} />
+        )}
+
+        {/* Timing (delay before this message) */}
+        <div className="flex flex-col gap-1.5">
+          <Label className="text-sm font-medium">Send timing</Label>
+          <div className="flex items-end gap-2">
+            <div className="flex flex-1 flex-col gap-1.5">
+              <Label className="text-xs text-muted-foreground">Delay amount</Label>
+              <Input
+                type="number"
+                min="0"
+                value={step.delayAmount}
+                onChange={(e) =>
+                  onChange({ ...step, delayAmount: Number(e.target.value) || 0 })
+                }
+                className="h-9 bg-white shadow-none"
+              />
+            </div>
+            <div className="flex flex-1 flex-col gap-1.5">
+              <Label className="text-xs text-muted-foreground">Unit</Label>
+              <Select
+                value={step.delayUnit}
+                onValueChange={(v) =>
+                  v && onChange({ ...step, delayUnit: v as MessageStep["delayUnit"] })
+                }
+              >
+                <SelectTrigger className="h-9 w-full bg-white shadow-none">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {customUnitOptions.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>
+                      {o.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          {index === 0 && step.delayAmount === 0 && (
+            <p className="text-xs text-muted-foreground">
+              This message sends immediately when the webhook fires.
+            </p>
+          )}
         </div>
       </div>
+    </div>
+  )
+}
+
+function VariableRow({
+  label,
+  value,
+  variables,
+  onSearchChange,
+  onSelect,
+  onClear,
+  onUseCustom,
+}: {
+  label: string
+  value: string
+  variables: IVariableDefinition[]
+  onSearchChange: (q: string) => void
+  onSelect: (path: string) => void
+  onClear: () => void
+  onUseCustom: (custom: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [mode, setMode] = useState<"path" | "custom">("path")
+
+  return (
+    <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/20 px-3 py-2">
+      <span className="w-28 shrink-0 text-xs font-medium text-foreground">{label}</span>
+
+      {mode === "custom" ? (
+        <div className="flex flex-1 items-center gap-2">
+          <Input
+            className="h-8 flex-1 bg-white shadow-none"
+            placeholder="Static value"
+            value={value}
+            onChange={(e) => onUseCustom(e.target.value)}
+          />
+          <button
+            type="button"
+            onClick={() => {
+              setMode("path")
+              onClear()
+            }}
+            className="text-xs text-[#008060] hover:underline"
+          >
+            Use webhook field
+          </button>
+        </div>
+      ) : (
+        <Popover open={open} onOpenChange={setOpen}>
+          <PopoverTrigger
+            render={
+              <button
+                type="button"
+                className="flex h-8 flex-1 items-center justify-between rounded-md border border-border bg-white px-2.5 text-left text-sm shadow-none hover:bg-muted/30"
+              >
+                <span className="truncate font-mono text-xs">
+                  {value ? `{{${value}}}` : "Select a webhook field…"}
+                </span>
+                {value ? (
+                  <X className="size-3.5 text-muted-foreground hover:text-foreground" />
+                ) : (
+                  <Search className="size-3.5 text-muted-foreground" />
+                )}
+              </button>
+            }
+          />
+          <PopoverContent align="start" side="bottom" className="w-80 p-0">
+            <div className="border-b border-border p-2">
+              <Input
+                autoFocus
+                className="h-8 text-xs shadow-none"
+                placeholder="Search webhook fields…"
+                onChange={(e) => onSearchChange(e.target.value)}
+              />
+            </div>
+            <div className="max-h-56 overflow-y-auto p-2">
+              {variables.length === 0 ? (
+                <p className="px-2 py-4 text-center text-xs text-muted-foreground">
+                  No webhook fields available.
+                </p>
+              ) : (
+                variables.map((v) => (
+                  <button
+                    key={v.path}
+                    type="button"
+                    onClick={() => {
+                      onSelect(v.path)
+                      setOpen(false)
+                    }}
+                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-muted/50"
+                  >
+                    <code className="shrink-0 font-mono text-[11px] text-[#008060]">
+                      {`{{${v.path}}}`}
+                    </code>
+                    <span className="truncate text-xs text-muted-foreground">{v.label}</span>
+                  </button>
+                ))
+              )}
+            </div>
+          </PopoverContent>
+        </Popover>
+      )}
+
+      <button
+        type="button"
+        onClick={() => {
+          if (mode === "custom") {
+            setMode("path")
+            onClear()
+          } else {
+            setMode("custom")
+            onUseCustom("")
+          }
+        }}
+        className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+      >
+        <Plus className="size-3" />
+        {mode === "custom" ? "Field" : "Static"}
+      </button>
     </div>
   )
 }

@@ -1,11 +1,15 @@
 import { cookies } from "next/headers"
 
 // ─── Cookie names ─────────────────────────────────────────────────────────────
-const API_KEY_COOKIE = "pinggo_api_key"
+const TOKEN_COOKIE = "pinggo_token"
 const USER_ID_COOKIE = "pinggo_user_id"
 const SHOPIFY_SESSION_COOKIE = "shopify_session"
 
-// ─── PingGo credentials (manually entered by the user in the onboarding form) ─
+// ─── PingGo credentials (JWT obtained via login / registration) ───────────────
+//
+// `apiKey` holds the PingGo JWT bearer token. It is passed to the Pinggo backend
+// as `Authorization: Bearer <token>` (the backend derives the user ID from the
+// token). It is an HTTP-only cookie and never exposed to the browser.
 
 export type PinggoCredentials = {
   apiKey: string | undefined
@@ -15,7 +19,7 @@ export type PinggoCredentials = {
 export async function getPinggoCredentials(): Promise<PinggoCredentials> {
   const cookieStore = await cookies()
   return {
-    apiKey: cookieStore.get(API_KEY_COOKIE)?.value,
+    apiKey: cookieStore.get(TOKEN_COOKIE)?.value,
     userId: cookieStore.get(USER_ID_COOKIE)?.value,
   }
 }
@@ -29,12 +33,16 @@ export async function hasPinggoCredentials(): Promise<boolean> {
 
 export type ShopifySession = {
   shop: string
-  accessToken: string
+  storeId?: string
+  scope?: string
 }
 
 /**
  * Returns the Shopify session stored after OAuth, or null if the merchant
  * has not installed / authenticated the app yet.
+ *
+ * Note: this only contains non-sensitive store metadata. The Shopify access
+ * token is stored server-side and never reaches the browser.
  */
 export async function getShopifySession(): Promise<ShopifySession | null> {
   const cookieStore = await cookies()
@@ -47,9 +55,7 @@ export async function getShopifySession(): Promise<ShopifySession | null> {
       parsed !== null &&
       typeof parsed === "object" &&
       "shop" in parsed &&
-      "accessToken" in parsed &&
-      typeof (parsed as Record<string, unknown>).shop === "string" &&
-      typeof (parsed as Record<string, unknown>).accessToken === "string"
+      typeof (parsed as Record<string, unknown>).shop === "string"
     ) {
       return parsed as ShopifySession
     }

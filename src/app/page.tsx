@@ -1,13 +1,19 @@
 import { redirect } from "next/navigation"
 import { ShieldCheck } from "lucide-react"
 
-import { OnboardingForm } from "@/components/onboarding-form"
+import { PinggoAuthForm } from "@/components/pinggo-auth-form"
 import { hasPinggoCredentials } from "@/lib/pinggo"
 
-export default async function Home() {
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: Promise<{ shop?: string }>
+}) {
   if (await hasPinggoCredentials()) {
     redirect("/dashboard")
   }
+
+  const { shop } = await searchParams
 
   return (
     <div className="flex min-h-svh">
@@ -78,11 +84,11 @@ export default async function Home() {
               Connect your PingGo account
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              Enter your credentials to link your Shopify store.
+              Sign in or create a PingGo account to link your Shopify store.
             </p>
           </div>
 
-          <OnboardingForm />
+          <PinggoAuthForm shop={shop} />
         </div>
       </div>
     </div>
