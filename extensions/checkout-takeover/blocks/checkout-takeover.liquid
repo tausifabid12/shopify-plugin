@@ -1,0 +1,65 @@
+{% comment %}
+  PingGo Checkout — storefront takeover.
+
+  An app embed block: the merchant switches it on once in the theme editor and
+  it loads on every page. It does nothing on its own — the script asks our API
+  whether this shop has the custom checkout turned on, and stays out of the way
+  if it hasn't.
+
+  The URLs are settings rather than hard-coded so the same extension can point
+  at staging or production without a rebuild. Merchants never need to touch them.
+{% endcomment %}
+
+<script
+  id="pinggo-checkout-config"
+  type="application/json"
+>
+  {
+    "shopDomain": {{ shop.permanent_domain | json }},
+    "apiBase": {{ block.settings.api_base | default: "https://server.getcreator.online/api_v1" | json }},
+    "checkoutBase": {{ block.settings.checkout_base | default: "https://checkout.getcreator.online" | json }},
+    "takeoverBuyNow": {{ block.settings.takeover_buy_now | default: false | json }},
+    "currency": {{ shop.currency | json }},
+    "cartToken": {{ cart.token | json }}
+  }
+</script>
+
+<script src="{{ 'checkout-takeover.js' | asset_url }}" defer></script>
+
+{% schema %}
+{
+  "name": "PingGo Checkout",
+  "target": "body",
+  "settings": [
+    {
+      "type": "paragraph",
+      "content": "Sends shoppers to your branded PingGo checkout instead of Shopify's. Turn the checkout on from your PingGo dashboard — this block stays inactive until you do."
+    },
+    {
+      "type": "checkbox",
+      "id": "takeover_buy_now",
+      "label": "Also replace \"Buy it now\" buttons",
+      "info": "Leave off if your theme's dynamic checkout buttons behave unexpectedly.",
+      "default": false
+    },
+    {
+      "type": "header",
+      "content": "Advanced"
+    },
+    {
+      "type": "text",
+      "id": "api_base",
+      "label": "PingGo API URL",
+      "info": "Only change this if PingGo support asks you to.",
+      "default": "https://server.getcreator.online/api_v1"
+    },
+    {
+      "type": "text",
+      "id": "checkout_base",
+      "label": "Checkout URL",
+      "info": "Only change this if PingGo support asks you to.",
+      "default": "https://checkout.getcreator.online"
+    }
+  ]
+}
+{% endschema %}

@@ -8,6 +8,7 @@ import {
   LogOut,
   MessageCircle,
   Settings,
+  ShoppingBag,
   Store,
 } from "lucide-react"
 
@@ -17,6 +18,7 @@ import { cn } from "@/lib/utils"
 const mainNav = [
   { title: "Home", href: "/dashboard", icon: LayoutDashboard },
   { title: "WhatsApp", href: "/dashboard/whatsapp", icon: MessageCircle },
+  { title: "Checkout", href: "/dashboard/checkout", icon: ShoppingBag },
   { title: "Payments", href: "/dashboard/payments", icon: CreditCard },
 ]
 

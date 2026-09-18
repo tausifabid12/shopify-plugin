@@ -3,7 +3,7 @@
 import { MessageCircle } from "lucide-react"
 
 import { whatsappFeatureSections } from "@/lib/whatsapp-features"
-import { FeatureSectionGrid } from "@/components/feature-section-grid"
+import { FeatureSectionGrid } from "./components/feature-section-grid"
 
 const totalFeatures = whatsappFeatureSections.reduce(
   (sum, s) => sum + s.items.length,

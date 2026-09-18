@@ -15,9 +15,7 @@ export type PinggoRegisterInput = {
 
 export type PinggoLinkStoreInput = {
   shopDomain: string
-  shopUrl: string
   accessToken: string
-  storeId?: string
   scope?: string
 }
 
@@ -78,14 +76,16 @@ export async function pinggoRegisterRequest(input: PinggoRegisterInput) {
 }
 
 /**
- * POST /shopify/link — links the Shopify store to the authenticated Pinggo
- * user. The token is sent server-side and never reaches the browser.
+ * POST /shopify-app/stores/link — links the Shopify store to the authenticated
+ * Pinggo user. The server verifies the token, stores it encrypted and
+ * (re)registers the store's Shopify webhook subscriptions. The token is sent
+ * server-side and never reaches the browser.
  */
 export async function pinggoLinkStoreRequest(
   token: string,
   input: PinggoLinkStoreInput
 ) {
-  const res = await fetch(`${PINGGO_API_BASE}/shopify/link`, {
+  const res = await fetch(`${PINGGO_API_BASE}/shopify-app/stores/link`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

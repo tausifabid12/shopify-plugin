@@ -1,13 +1,14 @@
 "use client"
 
-import { AlertTriangle, Loader2 } from "lucide-react"
+import { AlertTriangle, Loader2, Store } from "lucide-react"
 
 import { whatsappFeatureSections } from "@/lib/whatsapp-features"
-import { useShopifyDefinitions } from "@/components/shopify-definitions-provider"
+import { useShopifyAutomations } from "./shopify-automation-provider"
 import { FeatureGridCard } from "./feature-grid-card"
 
 export function FeatureSectionGrid() {
-  const { loading, error } = useShopifyDefinitions()
+  const { loading, error, store } = useShopifyAutomations()
+  const storeDisconnected = !loading && !error && store?.status !== "active"
 
   return (
     <div className="flex flex-col gap-10">
@@ -21,11 +22,22 @@ export function FeatureSectionGrid() {
 
       {/* API error — non-blocking, cards still render */}
       {!loading && error && (
-        <div className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+        <div className="flex items-start gap-2.5 rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" />
           <span>
             <strong>Could not reach PingGo API</strong> — {error}. Toggles may
             not save until the connection is restored.
+          </span>
+        </div>
+      )}
+
+      {/* Store not linked — automations cannot receive Shopify events */}
+      {storeDisconnected && (
+        <div className="flex items-start gap-2.5 rounded-xl border border-border bg-muted/50 px-4 py-3 text-sm text-foreground">
+          <Store className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+          <span>
+            <strong>Your Shopify store isn&apos;t connected.</strong> Open PingGo from
+            your Shopify admin to install the app, then enable automations here.
           </span>
         </div>
       )}

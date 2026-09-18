@@ -82,13 +82,14 @@ export async function GET(request: NextRequest) {
     const pinggoToken = cookieStore.get(PINGGO_TOKEN_COOKIE)?.value
     if (pinggoToken) {
         try {
-            await pinggoLinkStoreRequest(pinggoToken, {
+            const link = await pinggoLinkStoreRequest(pinggoToken, {
                 shopDomain: shop,
-                shopUrl: `https://${shop}`,
                 accessToken,
-                storeId,
                 scope,
             })
+            if (!link.ok) {
+                console.error("[callback] PingGo rejected the Shopify store link:", link.json?.message)
+            }
         } catch (err) {
             // Non-fatal: the local session still works, but log for visibility.
             console.error("[callback] Failed to link Shopify store to PingGo:", err)

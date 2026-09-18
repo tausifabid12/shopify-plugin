@@ -2,22 +2,25 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { AlertCircle, Loader2, Pencil, Sparkles } from "lucide-react"
+import { AlertCircle, Loader2, Lock, Pencil, Sparkles } from "lucide-react"
 
 import { Switch } from "@/components/ui/switch"
 import { cn } from "@/lib/utils"
 import type { FeatureItem } from "@/lib/feature-types"
-import { useShopifyDefinitions } from "@/components/shopify-definitions-provider"
+import { useShopifyAutomations } from "./shopify-automation-provider"
 
 export function FeatureGridCard({ feature }: { feature: FeatureItem }) {
-  const { shopifyWebhooksByTopic, setAutomationEnabled, loading } =
-    useShopifyDefinitions()
+  const { automationsByFeature, triggersByTopic, setAutomationEnabled, loading } =
+    useShopifyAutomations()
   const Icon = feature.icon
 
-  // Persisted enabled state: a Shopify webhook exists and is active for this topic.
-  const persistedEnabled = feature.shopifyTopic
-    ? shopifyWebhooksByTopic[feature.shopifyTopic]?.status === "active"
-    : false
+  const automation = automationsByFeature[feature.id]
+  // A Shopify-backed feature is only usable when the admin has enabled its event.
+  const unavailable =
+    !loading && Boolean(feature.shopifyTopic) && !triggersByTopic[feature.shopifyTopic!]
+
+  // Persisted enabled state: the feature's Webhooks V2 automation is active.
+  const persistedEnabled = feature.shopifyTopic ? automation?.status === "active" : false
 
   // Optimistic local state — starts null (unset) until context loads.
   const [optimisticEnabled, setOptimisticEnabled] = useState<boolean | null>(null)
@@ -46,7 +49,7 @@ export function FeatureGridCard({ feature }: { feature: FeatureItem }) {
     setToggling(true)
 
     try {
-      await setAutomationEnabled(feature.shopifyTopic, feature.title, checked)
+      await setAutomationEnabled(feature, checked)
     } catch (err) {
       setOptimisticEnabled(!checked)
       setError(err instanceof Error ? err.message : "Failed to save. Try again.")
@@ -59,10 +62,10 @@ export function FeatureGridCard({ feature }: { feature: FeatureItem }) {
   return (
     <div
       className={cn(
-        "group flex flex-col rounded-xl border bg-white transition-all",
+        "group flex flex-col rounded-xl border bg-card transition-all",
         "shadow-[0_1px_3px_0_rgb(0,0,0,0.06)]",
         enabled
-          ? "border-[#008060]/25 shadow-[0_1px_8px_0_rgb(0,128,96,0.10)]"
+          ? "border-primary/25 shadow-[0_1px_8px_0_rgb(0,128,96,0.10)]"
           : "border-border hover:shadow-[0_4px_12px_0_rgb(0,0,0,0.08)]"
       )}
     >
@@ -72,7 +75,7 @@ export function FeatureGridCard({ feature }: { feature: FeatureItem }) {
           className={cn(
             "flex size-9 shrink-0 items-center justify-center rounded-lg border transition-colors",
             enabled
-              ? "border-[#008060]/20 bg-[#008060]/10 text-[#008060]"
+              ? "border-primary/20 bg-primary/10 text-primary"
               : "border-border bg-muted/50 text-muted-foreground"
           )}
         >
@@ -86,9 +89,8 @@ export function FeatureGridCard({ feature }: { feature: FeatureItem }) {
           <Switch
             checked={enabled}
             onCheckedChange={handleToggle}
-            disabled={toggling || loading}
+            disabled={toggling || loading || (unavailable && !enabled)}
             aria-label={`Toggle ${feature.title}`}
-            className="data-[state=checked]:bg-[#008060]"
           />
         </div>
       </div>
@@ -100,7 +102,7 @@ export function FeatureGridCard({ feature }: { feature: FeatureItem }) {
             {feature.title}
           </h3>
           {feature.tag ? (
-            <span className="inline-flex items-center rounded-full bg-[#008060]/10 px-1.5 py-0.5 text-[10px] font-medium text-[#008060]">
+            <span className="inline-flex items-center rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
               {feature.tag}
             </span>
           ) : null}
@@ -120,14 +122,19 @@ export function FeatureGridCard({ feature }: { feature: FeatureItem }) {
 
       {/* Footer action */}
       <div className="border-t border-border px-4 py-3">
-        {enabled ? (
+        {enabled && automation ? (
           <Link
             href={`/dashboard/whatsapp/${feature.id}/setup`}
-            className="inline-flex items-center gap-1.5 text-xs font-medium text-[#008060] transition-colors hover:text-[#006e52]"
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-primary transition-colors hover:text-primary/80"
           >
             <Pencil className="size-3.5" />
             Configure message
           </Link>
+        ) : unavailable ? (
+          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Lock className="size-3.5 shrink-0" />
+            Not available for your store yet
+          </p>
         ) : (
           <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <Sparkles className="size-3.5 shrink-0" />

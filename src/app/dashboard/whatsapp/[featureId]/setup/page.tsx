@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation"
 
-import { DynamicAutomationSetup } from "@/components/dynamic-automation-setup"
 import { whatsappFeatureSections } from "@/lib/whatsapp-features"
+import { AutomationSetup } from "../../components/automation-setup"
 
 export default async function AutomationSetupPage({
   params,
@@ -16,7 +16,8 @@ export default async function AutomationSetupPage({
   if (!feature) notFound()
 
   return (
-    <DynamicAutomationSetup
+    <AutomationSetup
+      featureId={feature.id}
       featureTitle={feature.title}
       shopifyTopic={feature.shopifyTopic}
     />

@@ -1,40 +1,21 @@
 /**
- * Thin API client for the Pinggo backend (webhooks-v2 feature).
+ * Thin API client for the Pinggo backend.
  *
- * The Shopify plugin reuses Pinggo's production "Advance Webhooks" (webhooks-v2)
- * feature. A Shopify automation is represented as:
- *   - a webhooks-v2 webhook (name prefixed with `Shopify: `),
- *   - its backing workflow + trigger,
- *   - and a message flow (follow-up template nodes) that sends WhatsApp messages.
+ * A Shopify automation is a Pinggo "Advance Webhooks" (Webhooks V2) webhook,
+ * provisioned by the server's `/shopify-app` module (see shopify-app-api.ts).
+ * Its messages live in a Webhooks V2 message flow, saved through the same
+ * production `/webhook-message-flow-v2` endpoints the Pinggo dashboard uses.
  *
  * The Pinggo JWT (stored as `pinggo_token`) is sent as a Bearer token; the
  * backend derives the user identity from it.
  */
 
+import type { IWebhookFlow } from "@/lib/workflow/flow-types"
+
 export const PINGGO_API_BASE =
     process.env.NEXT_PUBLIC_PINGGO_API_URL ?? "https://server.getcreator.online/api_v1";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-
-export interface IVariableDefinition {
-    path: string;
-    label: string;
-}
-
-export interface IShopifyWebhook {
-    _id: string;
-    vendorUserId: string;
-    folderId: string;
-    name: string;
-    status?: "draft" | "active";
-    secret?: string;
-    workflowId?: string;
-    triggerId?: string;
-    webhookUrl?: string;
-    samplePayload?: unknown;
-    createdAt?: string;
-    updatedAt?: string;
-}
 
 export interface IWhatsappTemplate {
     id: string;
@@ -43,14 +24,6 @@ export interface IWhatsappTemplate {
     language: string;
     category: string;
     components: Array<Record<string, unknown>>;
-}
-
-export interface IWorkflowFolder {
-    _id: string;
-    name: string;
-    isDefault?: boolean;
-    isDeletable?: boolean;
-    isEditable?: boolean;
 }
 
 export interface IWhatsappPhoneNumber {
@@ -73,36 +46,23 @@ export interface IVendorWhatsappDetails {
     business: IWhatsappBusiness[];
 }
 
-export interface IWebhookFlowNode {
-    id: string;
-    type: string;
-    position?: { x: number; y: number };
-    data?: Record<string, unknown>;
-    deletable?: boolean;
-}
+export type FlowMessageStatus = "pending" | "sent" | "failed" | "skipped" | "delivered" | "read";
 
-export interface IWebhookFlowEdge {
-    id: string;
-    source: string;
-    target: string;
-    sourceHandle?: string | null;
-    targetHandle?: string | null;
-    type?: string;
-    animated?: boolean;
-    style?: Record<string, unknown>;
-}
-
-export interface IWebhookFlow {
-    _id?: string;
-    vendorId: string;
-    workflowId: string;
-    name: string;
-    nodes: IWebhookFlowNode[];
-    edges: IWebhookFlowEdge[];
-    contactSettings?: Record<string, unknown>;
-    isActive?: boolean;
-    createdAt?: string;
-    updatedAt?: string;
+export interface IFlowExecution {
+    _id: string;
+    contactPhone: string;
+    triggerMessageStatus: FlowMessageStatus;
+    followUpLogs: {
+        nodeId: string;
+        order: number;
+        templateName?: string;
+        scheduledAt: string;
+        sentAt?: string;
+        status: FlowMessageStatus;
+        errorMessage?: string;
+    }[];
+    isCompleted: boolean;
+    createdAt: string;
 }
 
 type ApiEnvelope<T> = {
@@ -111,8 +71,6 @@ type ApiEnvelope<T> = {
     error?: unknown;
     data?: T;
     meta?: unknown;
-    webhook?: T;
-    webhookUrl?: string;
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -132,74 +90,29 @@ function authHeaders(token: string): Record<string, string> {
     };
 }
 
-// ─── Webhooks (webhooks-v2) ───────────────────────────────────────────────────
-
-export async function fetchWebhooks(token: string): Promise<IShopifyWebhook[]> {
-    const res = await fetch(`${PINGGO_API_BASE}/webhooks-v2`, {
-        headers: authHeaders(token),
-        cache: "no-store",
-    });
-    if (!res.ok) throw new Error(`Failed to fetch webhooks: ${res.status}`);
-    const json = await readEnvelope<IShopifyWebhook[]>(res);
-    return json.data ?? [];
-}
-
-export async function createWebhook(
+/** Performs an authenticated request and returns `data`, surfacing the server's error message. */
+export async function pinggoRequest<T>(
     token: string,
-    input: { vendorUserId: string; folderId: string; name: string }
-): Promise<IShopifyWebhook> {
-    const res = await fetch(`${PINGGO_API_BASE}/webhooks-v2`, {
-        method: "POST",
-        headers: authHeaders(token),
-        body: JSON.stringify(input),
-        cache: "no-store",
-    });
-    if (!res.ok) {
-        const json = await readEnvelope(res);
-        throw new Error(
-            (typeof json.error === "string" ? json.error : json.message) ||
-            `Failed to create webhook: ${res.status}`
-        );
+    path: string,
+    init: { method?: string; body?: unknown; fallbackError: string }
+): Promise<T> {
+    let res: Response;
+    try {
+        res = await fetch(`${PINGGO_API_BASE}${path}`, {
+            method: init.method ?? "GET",
+            headers: authHeaders(token),
+            body: init.body === undefined ? undefined : JSON.stringify(init.body),
+            cache: "no-store",
+        });
+    } catch {
+        throw new Error(`${init.fallbackError} Check your connection and try again.`);
     }
-    const json = await readEnvelope<IShopifyWebhook>(res);
-    return (json.webhook ?? json.data ?? {}) as IShopifyWebhook;
-}
-
-export async function updateWebhookStatus(
-    token: string,
-    webhookId: string,
-    status: "draft" | "active"
-): Promise<IShopifyWebhook> {
-    const res = await fetch(`${PINGGO_API_BASE}/webhooks-v2/${webhookId}`, {
-        method: "PATCH",
-        headers: authHeaders(token),
-        body: JSON.stringify({ status }),
-        cache: "no-store",
-    });
-    if (!res.ok) throw new Error(`Failed to update webhook: ${res.status}`);
-    const json = await readEnvelope<IShopifyWebhook>(res);
-    return (json.data ?? {}) as IShopifyWebhook;
-}
-
-export async function deleteWebhook(token: string, webhookId: string): Promise<void> {
-    const res = await fetch(`${PINGGO_API_BASE}/webhooks-v2/${webhookId}`, {
-        method: "DELETE",
-        headers: authHeaders(token),
-        cache: "no-store",
-    });
-    if (!res.ok) throw new Error(`Failed to delete webhook: ${res.status}`);
-}
-
-// ─── Workflow folders ─────────────────────────────────────────────────────────
-
-export async function fetchWorkflowFolders(token: string): Promise<IWorkflowFolder[]> {
-    const res = await fetch(`${PINGGO_API_BASE}/workflows-v2/folders`, {
-        headers: authHeaders(token),
-        cache: "no-store",
-    });
-    if (!res.ok) throw new Error(`Failed to fetch folders: ${res.status}`);
-    const json = await readEnvelope<IWorkflowFolder[]>(res);
-    return json.data ?? [];
+    const json = await readEnvelope<T>(res);
+    if (!res.ok || json.success === false) {
+        const detail = typeof json.error === "string" && !json.message ? json.error : json.message;
+        throw new Error(detail || `${init.fallbackError} (${res.status})`);
+    }
+    return json.data as T;
 }
 
 // ─── WhatsApp templates ───────────────────────────────────────────────────────
@@ -208,18 +121,13 @@ export async function fetchWhatsappTemplates(
     token: string,
     userId: string
 ): Promise<IWhatsappTemplate[]> {
-    const params = new URLSearchParams({ userId, limit: "100" });
-    const res = await fetch(`${PINGGO_API_BASE}/templates?${params}`, {
-        headers: authHeaders(token),
-        cache: "no-store",
+    const params = new URLSearchParams({ userId, page: "1", limit: "1000" });
+    const raw = await pinggoRequest<Array<Record<string, unknown>>>(token, `/templates?${params}`, {
+        fallbackError: "Failed to fetch templates.",
     });
-    if (!res.ok) throw new Error(`Failed to fetch templates: ${res.status}`);
-    const json = await readEnvelope<Array<Record<string, unknown>>>(res);
-    const raw = json.data ?? [];
     // The backend Templates model uses snake_case field names; normalize to the
-    // same shape the dashboard uses so downstream consumers can rely on
-    // `id`, `name`, `status`, `language`, `category`, `components`.
-    return raw.map((t) => ({
+    // same shape the dashboard uses.
+    return (raw ?? []).map((t) => ({
         id: String(t.template_id ?? t.id ?? ""),
         name: String(t.template_name ?? t.name ?? ""),
         status: String(t.template_status ?? t.status ?? ""),
@@ -255,38 +163,41 @@ export async function fetchWebhookFlow(
         cache: "no-store",
     });
     if (res.status === 404) return null;
-    if (!res.ok) throw new Error(`Failed to fetch flow: ${res.status}`);
+    if (!res.ok) throw new Error(`Failed to load the saved automation (${res.status}).`);
     const json = await readEnvelope<IWebhookFlow>(res);
     return json.data ?? null;
 }
 
-export async function createWebhookFlow(
-    token: string,
-    payload: Partial<IWebhookFlow> & { vendorId: string }
-): Promise<IWebhookFlow> {
-    const res = await fetch(`${PINGGO_API_BASE}/webhook-message-flow-v2`, {
+export async function createWebhookFlow(token: string, payload: IWebhookFlow): Promise<IWebhookFlow> {
+    return pinggoRequest<IWebhookFlow>(token, "/webhook-message-flow-v2", {
         method: "POST",
-        headers: authHeaders(token),
-        body: JSON.stringify(payload),
-        cache: "no-store",
+        body: payload,
+        fallbackError: "Failed to save automation.",
     });
-    if (!res.ok) throw new Error(`Failed to create flow: ${res.status}`);
-    const json = await readEnvelope<IWebhookFlow>(res);
-    return (json.data ?? {}) as IWebhookFlow;
 }
 
 export async function updateWebhookFlow(
     token: string,
     flowId: string,
-    payload: Partial<IWebhookFlow>
+    payload: IWebhookFlow
 ): Promise<IWebhookFlow> {
-    const res = await fetch(`${PINGGO_API_BASE}/webhook-message-flow-v2/${flowId}`, {
+    return pinggoRequest<IWebhookFlow>(token, `/webhook-message-flow-v2/${flowId}`, {
         method: "PUT",
-        headers: authHeaders(token),
-        body: JSON.stringify(payload),
-        cache: "no-store",
+        body: payload,
+        fallbackError: "Failed to save automation.",
     });
-    if (!res.ok) throw new Error(`Failed to update flow: ${res.status}`);
-    const json = await readEnvelope<IWebhookFlow>(res);
-    return (json.data ?? {}) as IWebhookFlow;
+}
+
+// ─── Execution reports (webhook-flow-execution-report-v2) ────────────────────
+
+export async function fetchFlowExecutions(
+    token: string,
+    workflowId: string,
+    limit = 5
+): Promise<IFlowExecution[]> {
+    const params = new URLSearchParams({ webhookId: workflowId, page: "1", limit: String(limit) });
+    const data = await pinggoRequest<IFlowExecution[]>(token, `/webhook-flow-execution-report-v2?${params}`, {
+        fallbackError: "Failed to load recent activity.",
+    });
+    return data ?? [];
 }

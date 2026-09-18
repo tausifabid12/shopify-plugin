@@ -1,0 +1,48 @@
+# Shopify CLI app configuration.
+#
+# Only needed to deploy the theme app extension in `extensions/` — the Next.js
+# app handles OAuth itself in src/app/api/auth and doesn't use the CLI at
+# runtime.
+#
+# Setup: see SHOPIFY-SETUP.md. Check it with `npm run checkout:doctor`.
+#
+#   client_id       — your app's Client ID (the SAME value as SHOPIFY_API_KEY)
+#   application_url — your public HTTPS origin (the tunnel URL while testing),
+#                     and it must match APP_URL in .env.local
+#
+# Do NOT run `shopify app config link` — it overwrites this file from the
+# Partner Dashboard and would drop the scopes below. Paste the client_id by
+# hand instead; `shopify app deploy` only needs that.
+
+client_id = "REPLACE_WITH_YOUR_SHOPIFY_APP_CLIENT_ID"
+name = "PingGo"
+handle = "pinggo"
+application_url = "https://your-app-domain.com"
+embedded = true
+
+[access_scopes]
+# Checkout needs:
+#   read_products      — pricing the cart server-side from the real catalogue
+#   write_orders       — creating the order once payment is verified
+#   write_draft_orders — draftOrderCalculate, which quotes tax and shipping
+#                        from the merchant's own Shopify settings. Nothing is
+#                        written; Shopify gates the calculation behind the
+#                        write scope regardless.
+# The rest serve the WhatsApp automations that already ship in this app.
+scopes = "read_orders,write_orders,write_draft_orders,read_products,write_products,read_customers,read_fulfillments"
+
+[auth]
+# Must also be listed under "Allowed redirection URL(s)" in the Partner
+# Dashboard — Shopify checks the dashboard value, not this file.
+redirect_urls = [
+  "https://your-app-domain.com/api/auth/callback"
+]
+
+[webhooks]
+api_version = "2026-07"
+
+[pos]
+embedded = false
+
+[build]
+include_config_on_deploy = true
