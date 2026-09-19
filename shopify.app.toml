@@ -18,7 +18,26 @@ client_id = "e9a3ceea44206fa1d3f32b4348ce235b"
 name = "PingGo"
 handle = "pinggo"
 application_url = "https://shopify.getcreator.online"
-embedded = true
+
+# NOT embedded.
+#
+# An embedded app runs in an iframe on admin.shopify.com, which is a
+# third-party context. Two things break there:
+#
+#   1. The PingGo session cookies are SameSite=Lax, so the browser will not
+#      send them back inside the iframe. Login succeeds, the redirect fires,
+#      the cookie never arrives, and the proxy bounces the merchant straight
+#      back to the login form — it looks like the button did nothing.
+#   2. Shopify's own OAuth consent page refuses to be framed, so the install
+#      would die at the next step regardless.
+#
+# Running unembedded opens the app in its own tab: Lax cookies work, OAuth
+# works, and the dashboard behaves exactly as it does when opened directly.
+#
+# Supporting embedded properly is a separate piece of work — see
+# SHOPIFY-SETUP.md § "Embedded mode". It needs App Bridge, partitioned
+# cookies, and breaking out of the iframe for OAuth.
+embedded = false
 
 [access_scopes]
 # Checkout needs:

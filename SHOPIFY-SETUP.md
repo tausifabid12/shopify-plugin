@@ -260,6 +260,40 @@ on; the browser console for a failed call to `/checkout/public/config/...`.
 
 ---
 
+## Embedded mode
+
+The app ships **not embedded** (`embedded = false` in `shopify.app.toml`), so
+Shopify opens it in its own tab rather than an iframe inside the admin.
+
+That is a deliberate choice, not an oversight. An embedded app runs in a
+third-party context on `admin.shopify.com`, where two things break:
+
+1. **Session cookies don't come back.** The PingGo cookies are `SameSite=Lax`,
+   which browsers refuse to send inside a cross-site iframe. Login succeeds,
+   the redirect fires, the cookie never arrives, the proxy sees no session and
+   sends the merchant back to the login form. The visible symptom is a sign-in
+   button that appears to do nothing.
+2. **Shopify's OAuth page can't be framed.** Even with cookies fixed, the
+   install would fail at the consent screen.
+
+### What embedded would take
+
+Worth doing before public launch — merchants expect it — but it is its own
+piece of work, not a config flag:
+
+- **Partitioned cookies.** `SameSite=None; Secure; Partitioned` on the session
+  cookies (CHIPS), so they survive the iframe. Note that `SameSite=None` alone
+  is on borrowed time as browsers phase out third-party cookies.
+- **Break out for OAuth.** Detect the iframe and send the *top* window to the
+  Shopify consent URL — `window.top.location.href = installUrl` — rather than
+  navigating inside the frame.
+- **App Bridge.** Shopify's script for admin chrome, navigation and the session
+  token, which is the direction Shopify wants apps to go instead of cookies.
+- Set `embedded = true` again and redeploy.
+
+Until then, "open in its own tab" is a supported and perfectly functional
+configuration.
+
 ## Running behind nginx
 
 If you deploy behind a reverse proxy — as `shopify.getcreator.online` does —
@@ -289,9 +323,20 @@ location / {
 
 Then `sudo nginx -t && sudo systemctl reload nginx`.
 
-The app no longer depends on this being right — `src/lib/app-url.ts` builds
-redirects from `APP_URL` instead of the request — but fixing it is still worth
-doing, because anything else that reads the Host header will be wrong too.
+A wrong `Host` breaks two things, in two different and confusing ways:
+
+1. **Route-handler redirects** go to `https://localhost:3003` → *"localhost sent
+   an invalid response"*. Worked around in `src/lib/app-url.ts`.
+2. **Server Actions are silently rejected.** Next compares the browser's
+   `Origin` against the `Host` it received and aborts on a mismatch as CSRF
+   protection. The browser shows *nothing at all* — a form just stops working.
+   Worked around by `experimental.serverActions.allowedOrigins` in
+   `next.config.ts`. The giveaway is in the server log:
+   `host header with value localhost:3003 does not match origin header … Aborting the action.`
+
+Both workarounds are belt-and-braces. Fix the `Host` header and neither is
+doing any work — but leave them in, because anything else that reads the Host
+header would be wrong too.
 
 **`APP_URL` must be set in the deployed environment**, not just in your local
 `.env.local`. It is read at runtime, so a change needs a restart but not a
@@ -324,6 +369,8 @@ worth the ten minutes.
 | Tax and shipping both zero | `write_draft_orders` scope missing — add it and **reinstall**; scope changes aren't retroactive |
 | "We don't deliver to this address" | No Shopify shipping zone covers it |
 | OAuth loops back to sign-in | Tunnel URL doesn't match `APP_URL` |
+| Sign-in button does nothing — no error, no navigation | Next rejected the Server Action because `Origin` ≠ `Host`. Fix nginx's `Host` header; `experimental.serverActions.allowedOrigins` in `next.config.ts` covers it meanwhile. Check the server log for "Invalid Server Actions request" |
+| Redirected to `https://localhost:3003` | Same `Host` header cause, in a route handler. Deploy the `src/lib/app-url.ts` fix and correct nginx |
 | Order created but unpaid | Webhook secret mismatch — recheck the value in Razorpay and in Gateways |
 | Payment succeeds, no order | Expected if Shopify rejected it — look at **Checkout → Orders** for the error, fix it, hit Retry |
 | Extension does nothing | App embed not enabled, or the storefront switch is off |
