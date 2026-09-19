@@ -1,5 +1,7 @@
 import type { NextRequest } from "next/server"
 
+import { appUrl as buildAppUrl } from "@/lib/app-url"
+
 /**
  * GET /api/auth
  *
@@ -26,9 +28,10 @@ export async function GET(request: NextRequest) {
     // to the authenticated Pinggo user. If no Pinggo session exists yet, send
     // the merchant to the login/register screen with the shop carried through.
     if (!request.cookies.get("pinggo_token")?.value) {
-        const loginUrl = new URL("/", request.url)
-        loginUrl.searchParams.set("shop", shop)
-        return Response.redirect(loginUrl, 302)
+        // Built from APP_URL, not request.url: behind a reverse proxy the
+        // latter is the upstream address (localhost:3003), and redirecting the
+        // merchant there breaks the install before it starts.
+        return Response.redirect(buildAppUrl(request, "/", { shop }), 302)
     }
 
     const apiKey = process.env.SHOPIFY_API_KEY

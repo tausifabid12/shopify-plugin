@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 
+import { appUrl } from "@/lib/app-url"
+
 /**
  * Proxy (Next.js 16 replacement for middleware).
  *
@@ -28,8 +30,9 @@ export function proxy(request: NextRequest) {
     )
 
     if (!hasPinggoSession && !hasShopifySession) {
-        const loginUrl = new URL("/", request.url)
-        return NextResponse.redirect(loginUrl)
+        // Same reasoning as /api/auth: `request.url` is the upstream address
+        // behind a proxy, so the redirect has to be built on the public origin.
+        return NextResponse.redirect(appUrl(request, "/"))
     }
 
     return NextResponse.next()

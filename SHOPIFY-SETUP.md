@@ -260,6 +260,44 @@ on; the browser console for a failed call to `/checkout/public/config/...`.
 
 ---
 
+## Running behind nginx
+
+If you deploy behind a reverse proxy — as `shopify.getcreator.online` does —
+nginx **must** forward the original Host. Its default is
+`Host: $proxy_host`, which sends `localhost:3003` upstream. Next.js then builds
+redirects on that origin, and the merchant's browser is sent to
+`https://localhost:3003`, which fails with *"localhost sent an invalid
+response"* mid-install.
+
+```nginx
+location / {
+    proxy_pass         http://127.0.0.1:3003;
+    proxy_http_version 1.1;
+
+    # The important one. Without it nginx sends Host: 127.0.0.1:3003
+    # and every redirect points at the server's own loopback.
+    proxy_set_header   Host              $host;
+    proxy_set_header   X-Forwarded-Host  $host;
+    proxy_set_header   X-Forwarded-Proto $scheme;
+    proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header   X-Real-IP         $remote_addr;
+
+    proxy_set_header   Upgrade    $http_upgrade;
+    proxy_set_header   Connection "upgrade";
+}
+```
+
+Then `sudo nginx -t && sudo systemctl reload nginx`.
+
+The app no longer depends on this being right — `src/lib/app-url.ts` builds
+redirects from `APP_URL` instead of the request — but fixing it is still worth
+doing, because anything else that reads the Host header will be wrong too.
+
+**`APP_URL` must be set in the deployed environment**, not just in your local
+`.env.local`. It is read at runtime, so a change needs a restart but not a
+rebuild. `NEXT_PUBLIC_*` values are different: they are inlined at build time,
+so changing those needs a full `npm run build` before restarting.
+
 ## When the tunnel URL changes
 
 Every `npm run tunnel` restart gives a new URL. Update all four:

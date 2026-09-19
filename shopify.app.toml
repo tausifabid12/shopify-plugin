@@ -14,10 +14,10 @@
 # Partner Dashboard and would drop the scopes below. Paste the client_id by
 # hand instead; `shopify app deploy` only needs that.
 
-client_id = "REPLACE_WITH_YOUR_SHOPIFY_APP_CLIENT_ID"
+client_id = "e9a3ceea44206fa1d3f32b4348ce235b"
 name = "PingGo"
 handle = "pinggo"
-application_url = "https://your-app-domain.com"
+application_url = "https://shopify.getcreator.online"
 embedded = true
 
 [access_scopes]
@@ -35,7 +35,7 @@ scopes = "read_orders,write_orders,write_draft_orders,read_products,write_produc
 # Must also be listed under "Allowed redirection URL(s)" in the Partner
 # Dashboard — Shopify checks the dashboard value, not this file.
 redirect_urls = [
-  "https://your-app-domain.com/api/auth/callback"
+  "https://shopify.getcreator.online/api/auth/callback"
 ]
 
 [webhooks]
