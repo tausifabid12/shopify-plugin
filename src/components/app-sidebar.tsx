@@ -1,8 +1,10 @@
 "use client"
 
+import * as React from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
+  ChevronRight,
   CreditCard,
   LayoutDashboard,
   LogOut,
@@ -15,31 +17,100 @@ import {
 import { logout } from "@/app/actions"
 import { cn } from "@/lib/utils"
 
-const mainNav = [
-  { title: "Home", href: "/dashboard", icon: LayoutDashboard },
-  { title: "WhatsApp", href: "/dashboard/whatsapp", icon: MessageCircle },
-  { title: "Checkout", href: "/dashboard/checkout", icon: ShoppingBag },
-  { title: "Payments", href: "/dashboard/payments", icon: CreditCard },
-]
+const CHECKOUT_ROOT = "/dashboard/checkout"
+const WHATSAPP_ROOT = "/dashboard/whatsapp"
+const WHATSAPP_TEMPLATES = `${WHATSAPP_ROOT}/templates`
+
+const primaryNav: {
+  title: string
+  href: string
+  icon: React.ElementType
+  exact?: boolean
+}[] = [{ title: "Home", href: "/dashboard", icon: LayoutDashboard, exact: true }]
+
+const paymentsNav = { title: "Payments", href: "/dashboard/payments", icon: CreditCard }
 
 const secondaryNav = [
   { title: "Store", href: "/dashboard/store", icon: Store },
   { title: "Settings", href: "/dashboard/settings", icon: Settings },
 ]
 
+/**
+ * Checkout sub-navigation.
+ *
+ * One fixed order, three groups, and the groups answer the only three questions
+ * a merchant ever arrives with: how is it doing, what happened, how do I change
+ * it. Inside "Activity" the items follow the money — a checkout starts, it is
+ * abandoned or becomes an order, the order is paid, a payment may be refunded,
+ * and behind all of it is a customer.
+ */
+const checkoutGroups: {
+  label: string
+  items: { title: string; href: string }[]
+}[] = [
+  {
+    label: "Insights",
+    items: [
+      { title: "Overview", href: CHECKOUT_ROOT },
+      { title: "Analytics", href: `${CHECKOUT_ROOT}/analytics` },
+    ],
+  },
+  {
+    label: "Activity",
+    items: [
+      { title: "Sessions", href: `${CHECKOUT_ROOT}/sessions` },
+      { title: "Abandoned", href: `${CHECKOUT_ROOT}/abandoned` },
+      { title: "Orders", href: `${CHECKOUT_ROOT}/orders` },
+      { title: "Transactions", href: `${CHECKOUT_ROOT}/transactions` },
+      { title: "Refunds", href: `${CHECKOUT_ROOT}/refunds` },
+      { title: "Customers", href: `${CHECKOUT_ROOT}/customers` },
+    ],
+  },
+  {
+    label: "Setup",
+    items: [
+      { title: "Customize", href: `${CHECKOUT_ROOT}/customize` },
+      { title: "Gateways", href: `${CHECKOUT_ROOT}/gateways` },
+      { title: "Routing", href: `${CHECKOUT_ROOT}/routing` },
+      { title: "Offers", href: `${CHECKOUT_ROOT}/offers` },
+    ],
+  },
+]
+
+/**
+ * A nav entry owns its subtree, so a detail page keeps its parent lit. Section
+ * roots (Home, checkout Overview) are exact — they'd otherwise match everything
+ * below them. `exclude` carves out a child that has its own entry, so the two
+ * never light up together.
+ */
+function isActive(
+  pathname: string,
+  href: string,
+  exact = false,
+  exclude: string[] = []
+) {
+  if (exclude.some((path) => pathname === path || pathname.startsWith(path + "/"))) {
+    return false
+  }
+  if (exact) return pathname === href
+  return pathname === href || pathname.startsWith(href + "/")
+}
+
 function NavLink({
   href,
   icon: Icon,
   title,
   exact = false,
+  exclude,
 }: {
   href: string
   icon: React.ElementType
   title: string
   exact?: boolean
+  exclude?: string[]
 }) {
   const pathname = usePathname()
-  const active = exact ? pathname === href : pathname === href || pathname.startsWith(href + "/")
+  const active = isActive(pathname, href, exact, exclude)
 
   return (
     <Link
@@ -57,6 +128,149 @@ function NavLink({
         <span className="ml-auto h-1.5 w-1.5 rounded-full bg-[#00d4a1]" />
       )}
     </Link>
+  )
+}
+
+/**
+ * WhatsApp, plus the one page underneath it a merchant goes looking for by
+ * name. Templates are read-only here — they're authored in PingGo web — but
+ * they're the thing every automation depends on, so leaving them unlisted just
+ * means merchants can't find out where they come from.
+ *
+ * Always expanded: one child isn't worth a disclosure control.
+ */
+function WhatsappSection() {
+  const pathname = usePathname()
+  const templatesActive = isActive(pathname, WHATSAPP_TEMPLATES)
+
+  return (
+    <div className="flex flex-col">
+      <NavLink
+        href={WHATSAPP_ROOT}
+        icon={MessageCircle}
+        title="WhatsApp"
+        exclude={[WHATSAPP_TEMPLATES]}
+      />
+
+      <div className="mt-1 mb-1 ml-5 flex flex-col border-l border-white/10 pl-2">
+        <Link
+          href={WHATSAPP_TEMPLATES}
+          className={cn(
+            "flex items-center rounded-md px-2 py-1.5 text-[13px] transition-colors",
+            templatesActive
+              ? "bg-white/15 font-medium text-white"
+              : "text-white/55 hover:bg-white/8 hover:text-white/90"
+          )}
+        >
+          Templates
+          {templatesActive && (
+            <span className="ml-auto size-1.5 rounded-full bg-[#00d4a1]" />
+          )}
+        </Link>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Checkout is the one section deep enough to need a menu of its own, so it
+ * carries its pages here rather than in a tab strip above the content: the
+ * merchant can see every destination without first landing on the section, and
+ * the order never shifts underneath them.
+ */
+function CheckoutSection() {
+  const pathname = usePathname()
+  const inSection = isActive(pathname, CHECKOUT_ROOT)
+
+  // Open follows where the merchant is, and a manual toggle overrides that only
+  // until they cross the section boundary: collapsing while inside sticks as
+  // they move between checkout pages, and arriving in the section from outside
+  // always opens the menu.
+  const [override, setOverride] = React.useState<{
+    inSection: boolean
+    open: boolean
+  } | null>(null)
+
+  const open = override?.inSection === inSection ? override.open : inSection
+
+  return (
+    <div className="flex flex-col">
+      <div
+        className={cn(
+          "group flex items-center rounded-lg pr-1 transition-colors",
+          inSection ? "bg-white/10" : "hover:bg-white/8"
+        )}
+      >
+        <Link
+          href={CHECKOUT_ROOT}
+          className={cn(
+            "flex min-w-0 flex-1 items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+            inSection ? "text-white" : "text-white/60 group-hover:text-white/90"
+          )}
+        >
+          <ShoppingBag
+            className={cn(
+              "size-4 shrink-0 transition-colors",
+              inSection ? "text-white" : "text-white/50 group-hover:text-white/80"
+            )}
+          />
+          Checkout
+        </Link>
+
+        <button
+          type="button"
+          onClick={() => setOverride({ inSection, open: !open })}
+          aria-expanded={open}
+          aria-controls="checkout-subnav"
+          aria-label={open ? "Collapse checkout menu" : "Expand checkout menu"}
+          className="flex size-6 shrink-0 items-center justify-center rounded-md text-white/40 transition-colors hover:bg-white/10 hover:text-white/80"
+        >
+          <ChevronRight
+            className={cn("size-3.5 transition-transform", open && "rotate-90")}
+          />
+        </button>
+      </div>
+
+      {open && (
+        <div
+          id="checkout-subnav"
+          className="mt-1 mb-1 ml-5 flex flex-col gap-2.5 border-l border-white/10 pl-2"
+        >
+          {checkoutGroups.map((group) => (
+            <div key={group.label} className="flex flex-col">
+              <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-white/30">
+                {group.label}
+              </p>
+              {group.items.map((item) => {
+                const active = isActive(
+                  pathname,
+                  item.href,
+                  item.href === CHECKOUT_ROOT
+                )
+
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={cn(
+                      "flex items-center rounded-md px-2 py-1.5 text-[13px] transition-colors",
+                      active
+                        ? "bg-white/15 font-medium text-white"
+                        : "text-white/55 hover:bg-white/8 hover:text-white/90"
+                    )}
+                  >
+                    {item.title}
+                    {active && (
+                      <span className="ml-auto size-1.5 rounded-full bg-[#00d4a1]" />
+                    )}
+                  </Link>
+                )
+              })}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -79,15 +293,25 @@ export function AppSidebar({ userId }: { userId: string }) {
       {/* Nav */}
       <nav className="flex flex-1 flex-col gap-6 overflow-y-auto px-3 py-4">
         <div className="flex flex-col gap-0.5">
-          {mainNav.map((item) => (
+          {primaryNav.map((item) => (
             <NavLink
               key={item.href}
               href={item.href}
               icon={item.icon}
               title={item.title}
-              exact={item.href === "/dashboard"}
+              exact={item.exact}
             />
           ))}
+
+          <WhatsappSection />
+
+          <CheckoutSection />
+
+          <NavLink
+            href={paymentsNav.href}
+            icon={paymentsNav.icon}
+            title={paymentsNav.title}
+          />
         </div>
 
         <div className="flex flex-col gap-1">

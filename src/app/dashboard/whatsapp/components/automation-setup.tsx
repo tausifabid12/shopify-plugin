@@ -15,6 +15,7 @@ import { MessageStepEditor } from "./message-step-editor"
 import { RecentActivityCard } from "./recent-activity-card"
 import { RecipientSettingsCard } from "./recipient-settings-card"
 import { useShopifyAutomations } from "./shopify-automation-provider"
+import { TemplatesRequiredBanner } from "./templates-required-banner"
 import { UnsupportedFlowNotice } from "./unsupported-flow-notice"
 
 interface Props {
@@ -41,6 +42,12 @@ export function AutomationSetup({ featureId, featureTitle, shopifyTopic }: Props
   const setSteps = (steps: MessageStep[]) => updateDraft({ steps })
   const readOnly = Boolean(editor.unsupportedReason)
 
+  // When the step editors are on screen they carry their own empty state for
+  // templates, so the banner would be the same warning twice.
+  const editorsVisible = Boolean(
+    !editor.loading && automation && !readOnly && !editor.loadError
+  )
+
   return (
     <div className="flex flex-col gap-6">
       {/* Page header */}
@@ -53,6 +60,8 @@ export function AutomationSetup({ featureId, featureTitle, shopifyTopic }: Props
       </div>
 
       <AutomationTriggerStrip topic={shopifyTopic} trigger={trigger} automation={automation} />
+
+      {!editorsVisible ? <TemplatesRequiredBanner /> : null}
 
       {editor.loading ? (
         <div className="flex items-center gap-2 text-sm text-muted-foreground">

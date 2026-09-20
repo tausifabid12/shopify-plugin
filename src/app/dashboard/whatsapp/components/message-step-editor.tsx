@@ -2,14 +2,17 @@
 
 import { Trash2 } from "lucide-react"
 
+import { PinggoLink } from "@/components/pinggo-link"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { PINGGO_PATHS } from "@/lib/pinggo-handoff"
 import type { ITriggerVariable } from "@/lib/shopify-app-api"
 import type { MessageStep } from "@/lib/workflow/automation-draft"
 import type { TemplateVariableValue } from "@/lib/workflow/flow-types"
 import { getTemplateRequirements } from "@/lib/workflow/template-requirements"
 import { useShopifyAutomations } from "./shopify-automation-provider"
 import { StepTimingFields } from "./step-timing-fields"
+import { TemplatesEmptyState } from "./templates-empty-state"
 import { TemplateExtraFields } from "./template-extra-fields"
 import { TemplateVariableRow } from "./template-variable-row"
 
@@ -28,7 +31,7 @@ export function MessageStepEditor({
   removable: boolean
   variables: ITriggerVariable[]
 }) {
-  const { templates } = useShopifyAutomations()
+  const { templates, loading } = useShopifyAutomations()
   const requirements = getTemplateRequirements(step.template)
   const templateMissing = Boolean(step.templateId) && !templates.some((t) => t.id === step.templateId)
 
@@ -79,35 +82,47 @@ export function MessageStepEditor({
       <div className="flex flex-col gap-4 p-5">
         <StepTimingFields step={step} isFirst={index === 0} onChange={patch} />
 
-        {/* Template selector */}
+        {/* Template selector.
+            With nothing to choose from, a disabled dropdown is a dead end — the
+            empty state explains where templates come from and gets them there. */}
         <div className="flex flex-col gap-1.5">
           <Label className="text-sm font-medium">Message template</Label>
-          <Select value={step.templateId} onValueChange={updateTemplate}>
-            <SelectTrigger className="h-9 w-full bg-background shadow-none">
-              <SelectValue placeholder="Select a WhatsApp template">
-                {step.templateName || undefined}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              {templates.length === 0 ? (
-                <div className="px-2 py-3 text-sm text-muted-foreground">
-                  No approved templates available.
-                </div>
-              ) : (
-                templates.map((t) => (
-                  <SelectItem key={t.id} value={t.id}>
-                    {t.name}
-                  </SelectItem>
-                ))
-              )}
-            </SelectContent>
-          </Select>
-          {step.template ? (
-            <p className="text-xs text-muted-foreground">
-              {String(step.template.language ?? "")} · {String(step.template.category ?? "")}
-              {templateMissing ? " · no longer approved — pick it again or choose another template" : ""}
-            </p>
-          ) : null}
+
+          {!loading && templates.length === 0 ? (
+            <TemplatesEmptyState />
+          ) : (
+            <>
+              <Select value={step.templateId} onValueChange={updateTemplate}>
+                <SelectTrigger className="h-9 w-full bg-background shadow-none">
+                  <SelectValue placeholder="Select a WhatsApp template">
+                    {step.templateName || undefined}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {templates.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>
+                      {t.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              {step.template ? (
+                <p className="text-xs text-muted-foreground">
+                  {String(step.template.language ?? "")} · {String(step.template.category ?? "")}
+                  {templateMissing ? " · no longer approved — pick it again or choose another template" : ""}
+                </p>
+              ) : null}
+
+              <p className="text-xs text-muted-foreground">
+                Need a different message?{" "}
+                <PinggoLink path={PINGGO_PATHS.createTemplate} className="text-xs">
+                  Create a template in PingGo
+                </PinggoLink>
+              </p>
+            </>
+          )}
+
           {requirements && !requirements.supported ? (
             <p className="text-xs text-destructive">
               Carousel, authentication and WhatsApp Flow templates must be configured in the PingGo flow builder.

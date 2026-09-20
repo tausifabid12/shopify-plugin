@@ -1,7 +1,9 @@
 "use client"
 
+import { PinggoLink } from "@/components/pinggo-link"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { PINGGO_PATHS } from "@/lib/pinggo-handoff"
 import type { IVendorWhatsappDetails } from "@/lib/pinggo-api"
 import type { ITriggerVariable } from "@/lib/shopify-app-api"
 import type { AutomationDraft } from "@/lib/workflow/automation-draft"
@@ -61,6 +63,16 @@ export function RecipientSettingsCard({
             )}
           </SelectContent>
         </Select>
+        {/* The link sits outside the dropdown on purpose — a Select swallows
+            clicks on anything inside its content. */}
+        {senders.length === 0 ? (
+          <p className="text-xs text-muted-foreground">
+            Numbers are connected through Facebook in PingGo web.{" "}
+            <PinggoLink path={PINGGO_PATHS.connectWhatsapp} className="text-xs">
+              Connect a number
+            </PinggoLink>
+          </p>
+        ) : null}
       </div>
 
       <div className="flex flex-col gap-1.5">

@@ -124,9 +124,9 @@ export function Customizer({ initial }: { initial: CheckoutConfigState }) {
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
-    // Fills the viewport minus the dashboard padding and the section chrome
-    // above it, so the preview gets every pixel it can.
-    <div className="flex h-[calc(100svh-13rem)] min-h-[34rem] flex-col overflow-hidden rounded-xl border border-border bg-white">
+    // Fills the viewport minus the dashboard's own padding, so the preview gets
+    // every pixel it can. The section nav sits in the sidebar, not above this.
+    <div className="flex h-[calc(100svh-5rem)] min-h-136 flex-col overflow-hidden rounded-xl border border-border bg-white">
       {/* Save bar */}
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
         <div className="flex min-w-0 items-center gap-3">

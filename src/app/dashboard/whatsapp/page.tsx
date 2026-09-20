@@ -4,6 +4,7 @@ import { MessageCircle } from "lucide-react"
 
 import { whatsappFeatureSections } from "@/lib/whatsapp-features"
 import { FeatureSectionGrid } from "./components/feature-section-grid"
+import { TemplatesRequiredBanner } from "./components/templates-required-banner"
 
 const totalFeatures = whatsappFeatureSections.reduce(
   (sum, s) => sum + s.items.length,
@@ -32,6 +33,8 @@ export default function WhatsAppPage() {
           {totalFeatures} automations
         </span>
       </div>
+
+      <TemplatesRequiredBanner />
 
       {/* Feature sections — rendered client-side to keep icon refs off the boundary */}
       <FeatureSectionGrid />
