@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import Script from "next/script";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -30,20 +29,28 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <head>
         {/*
-          App Bridge. Shopify requires it to be the first script in the
-          document, which is why it uses `beforeInteractive` rather than being
-          dropped in the body — anything else and the admin reports the app as
-          "not loading".
+          App Bridge — a PLAIN script tag, deliberately not next/script.
 
-          It is loaded on every page, not only embedded ones: the script is a
-          no-op outside the Shopify admin, and gating it on a query parameter
-          would mean it is missing exactly when a deep link needs it.
+          `next/script` with `beforeInteractive` does not emit a real tag in the
+          App Router. It emits a queue entry:
+
+            <script>(self.__next_s=self.__next_s||[]).push(["…app-bridge.js",…])</script>
+
+          Next's runtime injects the script later, which is too late and too
+          indirect for App Bridge: it must be a genuine, early script tag or
+          `window.shopify` is never defined and the admin reports the app as not
+          loading.
+
+          Rendered here in <head> so it is among the first scripts in the
+          document. It is loaded on every page rather than only embedded ones —
+          it is inert outside the Shopify admin, and gating it on a query
+          parameter would mean it was missing exactly when a deep link needed it.
         */}
         {apiKey && (
-          <Script
+          // eslint-disable-next-line @next/next/no-sync-scripts
+          <script
             src="https://cdn.shopify.com/shopifycloud/app-bridge.js"
             data-api-key={apiKey}
-            strategy="beforeInteractive"
           />
         )}
       </head>
