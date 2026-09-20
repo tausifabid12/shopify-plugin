@@ -17,7 +17,7 @@
   {
     "shopDomain": {{ shop.permanent_domain | json }},
     "apiBase": {{ block.settings.api_base | default: "https://server.getcreator.online/api_v1" | json }},
-    "checkoutBase": {{ block.settings.checkout_base | default: "https://checkout.getcreator.online" | json }},
+    "checkoutBase": {{ block.settings.checkout_base | default: "https://shopify.getcreator.online" | json }},
     "takeoverBuyNow": {{ block.settings.takeover_buy_now | default: false | json }},
     "currency": {{ shop.currency | json }},
     "cartToken": {{ cart.token | json }}
@@ -39,8 +39,8 @@
       "type": "checkbox",
       "id": "takeover_buy_now",
       "label": "Also replace \"Buy it now\" buttons",
-      "info": "Leave off if your theme's dynamic checkout buttons behave unexpectedly.",
-      "default": false
+      "info": "On by default. Turn off only if your theme's dynamic checkout buttons misbehave — shoppers who use them will then get Shopify's checkout instead of yours.",
+      "default": true
     },
     {
       "type": "header",
@@ -58,7 +58,7 @@
       "id": "checkout_base",
       "label": "Checkout URL",
       "info": "Only change this if PingGo support asks you to.",
-      "default": "https://checkout.getcreator.online"
+      "default": "https://shopify.getcreator.online"
     }
   ]
 }

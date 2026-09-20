@@ -36,6 +36,33 @@
   var busy = false;
   var enabled = false;
 
+  /**
+   * Opt-in tracing.
+   *
+   * This script fails open by design: when anything goes wrong it steps aside
+   * and lets Shopify's checkout through. That is the right behaviour for
+   * shoppers and miserable for diagnosis, because a takeover that never
+   * happens looks identical to one that was never installed.
+   *
+   * Turn it on with ?pinggo_debug=1, or once per browser with
+   * localStorage.setItem('pinggo_debug','1').
+   */
+  var DEBUG = false;
+  try {
+    DEBUG =
+      /[?&]pinggo_debug=1/.test(window.location.search) ||
+      window.localStorage.getItem("pinggo_debug") === "1";
+  } catch (e) {
+    DEBUG = /[?&]pinggo_debug=1/.test(window.location.search);
+  }
+
+  function log() {
+    if (!DEBUG) return;
+    var args = Array.prototype.slice.call(arguments);
+    args.unshift("[PingGo]");
+    console.log.apply(console, args);
+  }
+
   // ── Utilities ──────────────────────────────────────────────────────────────
 
   /**
@@ -222,9 +249,10 @@
         // cart, not bounce through this interception again.
         window.location.replace(CHECKOUT + "/checkout/" + encodeURIComponent(token));
       })
-      .catch(function () {
+      .catch(function (err) {
         busy = false;
         hideOverlay();
+        log("Takeover failed, falling back to Shopify checkout:", err && err.message);
         // Something went wrong on our side — give the shopper Shopify's
         // checkout rather than nothing.
         fallback();
@@ -243,7 +271,23 @@
     '[data-pinggo-checkout]'
   ].join(",");
 
-  var BUY_NOW_SELECTOR = ".shopify-payment-button__button";
+  /**
+   * "Buy it now" / dynamic checkout buttons.
+   *
+   * The custom-element tags are listed alongside the button class on purpose:
+   * Shopify renders these inside a shadow root in several themes, and a click
+   * inside a shadow root is retargeted to its host. `closest()` from the host
+   * would never see the inner `.shopify-payment-button__button`, so without the
+   * tag names the interception silently misses and the shopper lands on
+   * Shopify's checkout.
+   */
+  var BUY_NOW_SELECTOR = [
+    ".shopify-payment-button__button",
+    "shopify-accelerated-checkout",
+    "shopify-accelerated-checkout-cart",
+    "shopify-payment-button",
+    '[data-shopify="payment-button"]'
+  ].join(",");
 
   function closestMatch(element, selector) {
     if (!element || !element.closest) return null;
@@ -263,11 +307,24 @@
 
     var target = event.target;
 
-    var buyNow = settings.takeoverBuyNow ? closestMatch(target, BUY_NOW_SELECTOR) : null;
+    var buyNow = closestMatch(target, BUY_NOW_SELECTOR);
+    if (buyNow && !settings.takeoverBuyNow) {
+      log('"Buy it now" clicked, but takeover is off for it in the theme editor');
+      return;
+    }
     if (buyNow) {
-      var form = closestMatch(buyNow, "form");
+      // The button can sit outside the product form (or inside a shadow root
+      // whose host is a sibling of it), so fall back to the page's add-to-cart
+      // form rather than giving up.
+      var form =
+        closestMatch(buyNow, "form") ||
+        document.querySelector('form[action*="/cart/add"]');
       var lines = form ? formLines(form) : null;
-      if (!lines) return; // can't read it — let the theme handle it
+      if (!lines) {
+        log("Could not read a variant from the product form — leaving it to the theme");
+        return; // can't read it — let the theme handle it
+      }
+      log("Intercepting Buy it now", lines);
       event.preventDefault();
       event.stopPropagation();
       takeover(Promise.resolve(lines), function () {
@@ -281,6 +338,7 @@
     var trigger = closestMatch(target, CHECKOUT_SELECTORS);
     if (!trigger) return;
 
+    log("Intercepting checkout button", trigger);
     event.preventDefault();
     event.stopPropagation();
 
@@ -330,11 +388,27 @@
   }
 
   function boot() {
-    var cached = readCache();
-    if (cached === false) return; // known off — don't even attach
+    log("Booting", {
+      shop: settings.shopDomain,
+      api: API,
+      checkout: CHECKOUT,
+      takeoverBuyNow: settings.takeoverBuyNow
+    });
+
+    // Debugging always asks the server fresh — otherwise a stale "off" cached
+    // before the merchant enabled the checkout hides the real answer for five
+    // minutes, which is exactly when someone is trying to work out why nothing
+    // is happening.
+    var cached = DEBUG ? null : readCache();
+
+    if (cached === false) {
+      log("Cached as disabled; not attaching. Re-check with ?pinggo_debug=1");
+      return;
+    }
     if (cached === true) {
       enabled = true;
       attach();
+      log("Enabled (from cache); listening for checkout clicks");
       return;
     }
 
@@ -343,13 +417,18 @@
         var data = body && body.data;
         var isOn = Boolean(data && data.enabled);
         writeCache(isOn);
+        log("Config from server:", { enabled: isOn });
         if (isOn) {
           enabled = true;
           attach();
+          log("Listening for checkout clicks");
+        } else {
+          log('Checkout is OFF for this store — turn on "Checkout on your storefront" in PingGo');
         }
       })
-      .catch(function () {
+      .catch(function (err) {
         // Couldn't reach us — leave the native checkout completely alone.
+        log("Could not reach the PingGo API:", err && err.message);
         writeCache(false);
       });
   }
