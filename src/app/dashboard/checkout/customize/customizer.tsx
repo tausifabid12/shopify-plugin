@@ -124,15 +124,19 @@ export function Customizer({ initial }: { initial: CheckoutConfigState }) {
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
-    // Fills the viewport minus the dashboard's own padding, so the preview gets
-    // every pixel it can. The section nav sits in the sidebar, not above this.
-    <div className="flex h-[calc(100svh-5rem)] min-h-136 flex-col overflow-hidden rounded-xl border border-border bg-white">
+    // `data-editor` tells the dashboard shell to drop its gutter and width
+    // clamp: this is a two-pane editor, and every pixel it doesn't get comes
+    // straight out of the preview.
+    <div
+      data-editor
+      className="flex h-full min-h-136 flex-col overflow-hidden bg-white"
+    >
       {/* Save bar */}
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border bg-white px-5 py-2.5">
         <div className="flex min-w-0 items-center gap-3">
-          <h2 className="text-sm font-semibold text-foreground">
+          <h1 className="text-[15px] font-semibold tracking-[-0.01em] text-foreground">
             Checkout customization
-          </h2>
+          </h1>
           <SaveIndicator state={saveState} justPublished={justPublished} />
         </div>
 
@@ -169,7 +173,7 @@ export function Customizer({ initial }: { initial: CheckoutConfigState }) {
       )}
 
       {/* Two-pane body */}
-      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[22rem_minmax(0,1fr)]">
+      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[20rem_minmax(0,1fr)]">
         <div className="min-h-0 overflow-y-auto border-b border-border lg:border-r lg:border-b-0">
           <SettingsPanel config={draft} onChange={handleChange} />
         </div>

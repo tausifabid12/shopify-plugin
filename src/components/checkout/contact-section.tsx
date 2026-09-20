@@ -60,14 +60,14 @@ export function ContactSection({
   if (!showPhone && !showEmail) return null
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2">
+    <div className="grid gap-4 @min-[640px]:grid-cols-2">
       {showPhone && (
         <CkField
           label={fieldLabel(config, "phone", "Mobile number")}
           required={isFieldRequired(fields, "phone")}
           error={errors?.phone}
           htmlFor="ck-phone"
-          className={showEmail ? undefined : "sm:col-span-2"}
+          className={showEmail ? undefined : "@min-[640px]:col-span-2"}
         >
           <CkInput
             id="ck-phone"
@@ -94,7 +94,7 @@ export function ContactSection({
           required={isFieldRequired(fields, "email")}
           error={errors?.email}
           htmlFor="ck-email"
-          className={showPhone ? undefined : "sm:col-span-2"}
+          className={showPhone ? undefined : "@min-[640px]:col-span-2"}
         >
           <CkInput
             id="ck-email"

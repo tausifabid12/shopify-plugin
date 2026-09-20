@@ -574,17 +574,17 @@ function Section({
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        className="flex w-full items-center justify-between px-4 py-3 text-left"
+        className="flex w-full items-center justify-between px-5 py-3 text-left transition-colors hover:bg-muted/40"
       >
         <span className="text-[13px] font-semibold text-foreground">{title}</span>
         <ChevronDown
           className={cn(
-            "size-4 text-muted-foreground transition-transform",
+            "size-4 shrink-0 text-muted-foreground transition-transform",
             open && "rotate-180"
           )}
         />
       </button>
-      {open && <div className="flex flex-col gap-4 px-4 pb-4">{children}</div>}
+      {open && <div className="flex flex-col gap-4 px-5 pb-5">{children}</div>}
     </div>
   )
 }
@@ -600,7 +600,7 @@ function Row({
 }) {
   return (
     <div className="flex flex-col gap-1.5">
-      <span className="text-[12px] font-medium text-muted-foreground">{label}</span>
+      <span className="text-[12px] font-medium text-foreground">{label}</span>
       {children}
       {hint && <p className="text-[11px] text-muted-foreground">{hint}</p>}
     </div>

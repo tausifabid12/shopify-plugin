@@ -291,7 +291,7 @@ export function AppSidebar({ userId }: { userId: string }) {
       </div>
 
       {/* Nav */}
-      <nav className="flex flex-1 flex-col gap-6 overflow-y-auto px-3 py-4">
+      <nav className="scrollbar-on-dark flex flex-1 flex-col gap-6 overflow-y-auto px-3 py-4">
         <div className="flex flex-col gap-0.5">
           {primaryNav.map((item) => (
             <NavLink

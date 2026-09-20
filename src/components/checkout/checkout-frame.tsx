@@ -128,13 +128,19 @@ export function CheckoutFrame({
     <OrderSummary
       session={session}
       config={config}
-      className={spec.twoColumn ? "md:sticky md:top-8" : undefined}
+      className={spec.twoColumn ? "@min-[768px]:sticky @min-[768px]:top-8" : undefined}
     />
   )
 
   return (
     <div
-      className={cn("w-full", embedded ? "min-h-full" : "min-h-svh")}
+      // `@container` rather than viewport breakpoints, because this frame is
+      // not always the page: it renders inside the customiser's preview pane
+      // and inside the storefront modal, both narrower than the window. Media
+      // queries read the window and would lay a 390px preview out as a desktop
+      // two-column grid — which is exactly what they did. Container queries ask
+      // the only question that matters: how wide is *this*.
+      className={cn("@container w-full", embedded ? "min-h-full" : "min-h-svh")}
       style={{
         background: "var(--ck-bg)",
         color: "var(--ck-text)",
@@ -149,7 +155,7 @@ export function CheckoutFrame({
       />
 
       <main
-        className="mx-auto w-full px-4 pb-16 sm:px-6"
+        className="mx-auto w-full px-4 pb-16 @min-[640px]:px-6"
         style={{ maxWidth: spec.maxWidth }}
       >
         <PromoBanners config={config} nudges={nudges} currency={session.currency} />
@@ -166,7 +172,7 @@ export function CheckoutFrame({
         <div
           className={cn(
             "pt-4",
-            spec.twoColumn && "md:grid md:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] md:items-start"
+            spec.twoColumn && "@min-[768px]:grid @min-[768px]:grid-cols-[minmax(0,1fr)_minmax(0,22rem)] @min-[768px]:items-start"
           )}
           style={{ gap: spec.gap }}
         >
@@ -281,7 +287,7 @@ export function CheckoutFrame({
 
           {/* Summary column */}
           {spec.twoColumn && (
-            <aside className="mt-6 min-w-0 md:mt-0">
+            <aside className="mt-6 min-w-0 @min-[768px]:mt-0">
               <CkCard bordered={spec.bordered} padding={spec.cardPadding}>
                 {summary}
               </CkCard>
@@ -335,7 +341,7 @@ function Header({
         className="w-full"
         style={{ borderBottom: "1px solid var(--ck-border)", background: "var(--ck-surface)" }}
       >
-        <div className="mx-auto flex w-full max-w-5xl items-center gap-3 px-4 py-4 sm:px-6">
+        <div className="mx-auto flex w-full max-w-5xl items-center gap-3 px-4 py-4 @min-[640px]:px-6">
           {branding.logoUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img

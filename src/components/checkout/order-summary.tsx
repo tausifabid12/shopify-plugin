@@ -47,7 +47,7 @@ export function OrderSummary({
             type="button"
             onClick={() => setOpen((v) => !v)}
             aria-expanded={open}
-            className="flex w-full items-center justify-between py-3 text-left outline-none md:hidden"
+            className="flex w-full items-center justify-between py-3 text-left outline-none @min-[768px]:hidden"
           >
             <span
               className="flex items-center gap-1.5 text-[14px] font-medium"
@@ -79,16 +79,16 @@ export function OrderSummary({
               {formatMoney(totals.total, currency)}
             </span>
           </button>
-          <div className="md:hidden">
+          <div className="@min-[768px]:hidden">
             <CkDivider />
           </div>
         </>
       )}
 
-      <div className={cn(canCollapse && !open && "hidden md:block")}>
+      <div className={cn(canCollapse && !open && "hidden @min-[768px]:block")}>
         {config.content?.summaryHeading !== "" && (
           <h2
-            className="mb-4 hidden text-[15px] font-semibold tracking-[-0.01em] md:block"
+            className="mb-4 hidden text-[15px] font-semibold tracking-[-0.01em] @min-[768px]:block"
             style={{ color: "var(--ck-text)" }}
           >
             {config.content?.summaryHeading || "Order summary"}
@@ -98,7 +98,7 @@ export function OrderSummary({
           </h2>
         )}
 
-        <ul className="flex flex-col gap-3.5 pt-3 md:pt-0">
+        <ul className="flex flex-col gap-3.5 pt-3 @min-[768px]:pt-0">
           {session.items.map((item) => (
             <li key={item.variantGid} className="flex items-start gap-3">
               {opts.showProductImages && (

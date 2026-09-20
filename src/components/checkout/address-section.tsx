@@ -41,7 +41,7 @@ export function AddressSection({
   const selectedRegion = resolveRegion(value.provinceCode || value.province)
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2">
+    <div className="grid gap-4 @min-[640px]:grid-cols-2">
       {show("firstName") && (
         <CkField
           label={fieldLabel(config, "firstName", "First name")}
@@ -88,7 +88,7 @@ export function AddressSection({
           required={required("address1")}
           error={errors?.address1}
           htmlFor="ck-address1"
-          className="sm:col-span-2"
+          className="@min-[640px]:col-span-2"
         >
           <CkInput
             id="ck-address1"
@@ -109,7 +109,7 @@ export function AddressSection({
           required={required("address2")}
           error={errors?.address2}
           htmlFor="ck-address2"
-          className="sm:col-span-2"
+          className="@min-[640px]:col-span-2"
         >
           <CkInput
             id="ck-address2"
@@ -174,7 +174,7 @@ export function AddressSection({
           required={required("province")}
           error={errors?.province}
           htmlFor="ck-province"
-          className={show("country") ? undefined : "sm:col-span-2"}
+          className={show("country") ? undefined : "@min-[640px]:col-span-2"}
         >
           <CkSelect
             id="ck-province"
