@@ -3,6 +3,7 @@ import {
   PHONEPE_CHECKOUT_JS,
   RAZORPAY_CHECKOUT_JS,
 } from "./load-script"
+import { isModalDisplay, postToStorefront } from "./modal-bridge"
 import type { CreateAttemptResult } from "./types"
 
 /**
@@ -195,6 +196,24 @@ async function openPhonePe(attempt: CreateAttemptResult): Promise<GatewayOutcome
   })
 }
 
+/**
+ * Sends the shopper to a payment page that cannot be framed.
+ *
+ * Inside the storefront modal, `window.location.assign` would navigate the
+ * iframe rather than the page, leaving the shopper staring at a bank form
+ * squeezed into a modal — or, more often, a blank box, because banks send
+ * `X-Frame-Options: DENY`. The parent is asked to promote the navigation to
+ * top level instead. Outside the modal this is an ordinary redirect.
+ */
+function leaveForPayment(url: string): GatewayOutcome {
+  if (isModalDisplay()) {
+    postToStorefront({ type: "pinggo:breakout", url })
+    return { kind: "redirecting" }
+  }
+  window.location.assign(url)
+  return { kind: "redirecting" }
+}
+
 /** Closes PhonePe's iframe if one is open — used when navigating away. */
 export function closePhonePeFrame(): void {
   try {
@@ -220,15 +239,36 @@ export async function runGatewayFlow(
       if (!attempt.redirectUrl) {
         return { kind: "error", message: "The gateway did not provide a payment page." }
       }
-      window.location.assign(attempt.redirectUrl)
-      return { kind: "redirecting" }
+      return leaveForPayment(attempt.redirectUrl)
     }
 
     switch (attempt.provider) {
       case "razorpay":
+        // Checkout.js renders its own overlay inside whatever page hosts it,
+        // so it survives the storefront modal. Left in-frame deliberately:
+        // this is the common path, and keeping the shopper on the store is the
+        // entire point of the modal.
         return await openRazorpay(attempt)
+
       case "phonepe":
+        /**
+         * PhonePe mounts its checkout in an iframe of its own. Inside the
+         * storefront modal that would be an iframe within an iframe, which
+         * breaks on several banks' 3-D Secure pages — and it breaks at the
+         * moment the shopper is paying, which is the worst possible moment.
+         *
+         * So in modal mode PhonePe is promoted to a full-page redirect, which
+         * is a flow it fully supports. The shopper comes back to
+         * /checkout/<token>/return either way.
+         */
+        if (isModalDisplay()) {
+          const target =
+            (attempt.clientPayload as { tokenUrl?: string }).tokenUrl ??
+            attempt.redirectUrl
+          if (target) return leaveForPayment(target)
+        }
         return await openPhonePe(attempt)
+
       default:
         return { kind: "error", message: "This payment method is not supported." }
     }

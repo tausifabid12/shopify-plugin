@@ -245,9 +245,7 @@
       .then(function (body) {
         var token = body && body.data && body.data.token;
         if (!token) throw new Error("no token");
-        // replace(), not assign(): Back from our checkout should return to the
-        // cart, not bounce through this interception again.
-        window.location.replace(CHECKOUT + "/checkout/" + encodeURIComponent(token));
+        openCheckout(token);
       })
       .catch(function (err) {
         busy = false;
@@ -257,6 +255,148 @@
         // checkout rather than nothing.
         fallback();
       });
+  }
+
+  // ── The checkout modal ─────────────────────────────────────────────────────
+
+  /**
+   * Opens the checkout over the storefront, so the shopper never leaves.
+   *
+   * Falls back to a full-page redirect whenever the modal can't be trusted to
+   * work: a browser without postMessage, a frame that never reports ready, or
+   * a payment step that refuses to be embedded. The redirect is the same
+   * checkout at the same URL, so nothing is lost by taking it.
+   */
+  function openCheckout(token) {
+    var base = CHECKOUT + "/checkout/" + encodeURIComponent(token);
+
+    // replace(), not assign(): Back from the checkout should return to the
+    // cart, not bounce through this interception again.
+    function redirect() {
+      window.location.replace(base);
+    }
+
+    if (!window.postMessage || !window.addEventListener) {
+      log("No postMessage support; redirecting instead of opening the modal");
+      redirect();
+      return;
+    }
+
+    var checkoutOrigin;
+    try {
+      checkoutOrigin = new URL(CHECKOUT).origin;
+    } catch (e) {
+      redirect();
+      return;
+    }
+
+    var frame = document.createElement("iframe");
+    frame.src = base + "?display=modal";
+    frame.setAttribute("title", "Checkout");
+    // `payment` is what lets gateway SDKs inside the frame use the Payment
+    // Request API; without it some UPI and card flows silently degrade.
+    frame.setAttribute("allow", "payment *; clipboard-write");
+    frame.style.cssText =
+      "width:100%;height:100%;border:0;background:transparent;display:block";
+
+    var shell = document.createElement("div");
+    shell.style.cssText =
+      "position:fixed;inset:0;z-index:2147483647;background:rgba(15,15,20,0.55);" +
+      "display:flex;align-items:center;justify-content:center;opacity:0;" +
+      "transition:opacity .18s ease";
+
+    var panel = document.createElement("div");
+    // Full-bleed on phones, a centred sheet on desktop.
+    panel.style.cssText =
+      "position:relative;width:100%;height:100%;max-width:560px;max-height:100%;" +
+      "background:#fff;overflow:hidden;box-shadow:0 24px 64px rgba(0,0,0,.28)";
+    if (window.innerWidth >= 600) {
+      panel.style.height = "min(92vh, 900px)";
+      panel.style.borderRadius = "14px";
+    }
+
+    panel.appendChild(frame);
+    shell.appendChild(panel);
+
+    var closed = false;
+    var ready = false;
+
+    function teardown() {
+      if (closed) return;
+      closed = true;
+      window.removeEventListener("message", onMessage);
+      document.removeEventListener("keydown", onKey);
+      if (shell.parentNode) shell.parentNode.removeChild(shell);
+      document.documentElement.style.overflow = previousOverflow;
+      busy = false;
+    }
+
+    function onKey(event) {
+      if (event.key === "Escape") teardown();
+    }
+
+    function onMessage(event) {
+      // The only trust boundary here. Anything from another origin is noise or
+      // an attack, and is ignored outright.
+      if (event.origin !== checkoutOrigin) return;
+      var data = event.data || {};
+
+      switch (data.type) {
+        case "pinggo:ready":
+          ready = true;
+          shell.style.opacity = "1";
+          log("Checkout modal ready");
+          break;
+
+        case "pinggo:close":
+          log("Checkout closed by the shopper");
+          teardown();
+          break;
+
+        case "pinggo:breakout":
+          // A payment page that cannot be framed. Promote it to the whole
+          // window rather than trapping it in the modal.
+          if (typeof data.url === "string") {
+            log("Payment needs the full page; leaving the modal", data.url);
+            closed = true;
+            window.location.href = data.url;
+          }
+          break;
+
+        case "pinggo:done":
+          log("Checkout completed");
+          teardown();
+          // The checkout owns the confirmation screen, so the storefront only
+          // needs to go wherever it says — or to the order status it opened.
+          window.location.href =
+            typeof data.url === "string" && data.url ? data.url : base;
+          break;
+
+        default:
+          break;
+      }
+    }
+
+    var previousOverflow = document.documentElement.style.overflow;
+
+    window.addEventListener("message", onMessage);
+    document.addEventListener("keydown", onKey);
+    document.body.appendChild(shell);
+    document.documentElement.style.overflow = "hidden";
+    hideOverlay();
+
+    /**
+     * If the frame never reports ready — blocked by CSP, an ad blocker, or an
+     * outage — fall back to the full page. Without this the shopper would be
+     * left looking at a dark screen with no way forward.
+     */
+    setTimeout(function () {
+      if (!ready && !closed) {
+        log("Modal did not load in time; redirecting to the full checkout");
+        teardown();
+        redirect();
+      }
+    }, 6000);
   }
 
   // ── Interception ───────────────────────────────────────────────────────────

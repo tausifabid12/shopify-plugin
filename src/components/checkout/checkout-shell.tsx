@@ -3,6 +3,7 @@
 import * as React from "react"
 
 import { closePhonePeFrame, runGatewayFlow } from "@/lib/checkout/gateways"
+import { isModalDisplay, postToStorefront } from "@/lib/checkout/modal-bridge"
 import * as api from "@/lib/checkout/public-api"
 import { CheckoutApiError } from "@/lib/checkout/public-api"
 import {
@@ -106,6 +107,38 @@ export function CheckoutShell({ initial }: { initial: CheckoutBootstrap }) {
 
   // PhonePe's iframe outlives a React unmount, so close it explicitly.
   React.useEffect(() => () => closePhonePeFrame(), [])
+
+  /**
+   * Storefront modal integration.
+   *
+   * When framed, the parent keeps the overlay hidden until it hears `ready`,
+   * so a failure to load shows as a fallback redirect rather than an empty
+   * grey box. Height is reported so the modal can track the content as the
+   * shopper moves through the steps.
+   */
+  const inModal = React.useMemo(() => isModalDisplay(), [])
+
+  React.useEffect(() => {
+    if (!inModal) return
+    postToStorefront({ type: "pinggo:ready" })
+
+    // ResizeObserver rather than polling: the checkout changes height on almost
+    // every interaction (errors, delivery options, the gateway mounting).
+    const observer = new ResizeObserver(() => {
+      postToStorefront({
+        type: "pinggo:height",
+        height: document.documentElement.scrollHeight,
+      })
+    })
+    observer.observe(document.documentElement)
+    return () => observer.disconnect()
+  }, [inModal])
+
+  // Tell the storefront to close and move the shopper on.
+  React.useEffect(() => {
+    if (!inModal || phase !== "paid") return
+    postToStorefront({ type: "pinggo:done" })
+  }, [inModal, phase])
 
   // ── Persistence ─────────────────────────────────────────────────────────────
 
@@ -603,6 +636,8 @@ export function CheckoutShell({ initial }: { initial: CheckoutBootstrap }) {
         quoting={quoting}
         busy={phase === "paying" || phase === "verifying"}
         error={error}
+        modal={inModal}
+        onClose={() => postToStorefront({ type: "pinggo:close" })}
       />
     </div>
   )

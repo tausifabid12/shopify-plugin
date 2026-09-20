@@ -42,11 +42,53 @@ function allowedOrigins(): string[] {
   return [...origins]
 }
 
+/**
+ * Who may frame the checkout.
+ *
+ * The storefront modal puts /checkout/<token> in an iframe on the merchant's
+ * own domain, so the browser needs explicit permission via `frame-ancestors`.
+ * It has to be a real header — `frame-ancestors` is ignored in a <meta> tag —
+ * which is why it lives here rather than being set per-request by the page.
+ *
+ * Default covers every Shopify-hosted storefront. Merchants on a custom domain
+ * (most production stores) must be added via CHECKOUT_FRAME_ANCESTORS, comma
+ * separated.
+ *
+ * KNOWN LIMITATION: this is one list for the whole deployment, not per
+ * merchant. The right long-term fix is to resolve the allowed origins from the
+ * session's own store record so each merchant only permits their own domain.
+ * Until then, framing is bounded to storefront-shaped origins and the checkout
+ * still requires an unguessable token, so an attacker gains nothing by framing
+ * a page they cannot address.
+ */
+function frameAncestors(): string {
+  const extra = (process.env.CHECKOUT_FRAME_ANCESTORS ?? "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean)
+
+  return ["'self'", "https://*.myshopify.com", "https://admin.shopify.com", ...extra].join(" ")
+}
+
 const nextConfig: NextConfig = {
   experimental: {
     serverActions: {
       allowedOrigins: allowedOrigins(),
     },
+  },
+
+  async headers() {
+    return [
+      {
+        source: "/checkout/:path*",
+        headers: [
+          {
+            key: "Content-Security-Policy",
+            value: `frame-ancestors ${frameAncestors()};`,
+          },
+        ],
+      },
+    ]
   },
 }
 

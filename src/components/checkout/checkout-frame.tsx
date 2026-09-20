@@ -81,6 +81,9 @@ export interface CheckoutFrameProps {
   inert?: boolean
   /** Rendered inside the preview frame instead of the real viewport. */
   embedded?: boolean
+  /** Running as the storefront modal — shows a dismiss control. */
+  modal?: boolean
+  onClose?: () => void
 }
 
 export function CheckoutFrame({
@@ -111,6 +114,8 @@ export function CheckoutFrame({
   error,
   inert,
   embedded,
+  modal,
+  onClose,
 }: CheckoutFrameProps) {
   const spec = layoutSpec(config.branding.layout)
   const copy = content(config)
@@ -137,7 +142,11 @@ export function CheckoutFrame({
         ["--ck-control-height" as string]: spec.controlHeight,
       }}
     >
-      <Header config={config} environment={session.environment} />
+      <Header
+        config={config}
+        environment={session.environment}
+        onClose={modal ? onClose : undefined}
+      />
 
       <main
         className="mx-auto w-full px-4 pb-16 sm:px-6"
@@ -298,9 +307,11 @@ export function CheckoutFrame({
 function Header({
   config,
   environment,
+  onClose,
 }: {
   config: CheckoutConfigPayload
   environment: string
+  onClose?: () => void
 }) {
   const { branding } = config
 
@@ -339,6 +350,30 @@ function Header({
             >
               {branding.storeName || "Checkout"}
             </span>
+          )}
+
+          {/* Only in the storefront modal. On a full page there is nothing to
+              close — the browser's own back button is the way out. */}
+          {onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close checkout"
+              className="ml-auto flex size-9 shrink-0 items-center justify-center rounded-full outline-none transition-colors hover:bg-black/5 focus-visible:ring-4"
+              style={{
+                color: "var(--ck-muted)",
+                ["--tw-ring-color" as string]: "var(--ck-focus-ring)",
+              }}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
+                <path
+                  d="M6 6l12 12M18 6L6 18"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </button>
           )}
         </div>
       </header>
