@@ -16,7 +16,21 @@
 
 client_id = "e9a3ceea44206fa1d3f32b4348ce235b"
 name = "PingGo"
-handle = "pinggo"
+# `handle` is deliberately absent.
+#
+# Listing it here makes every deploy try to SET the app's handle, and Shopify
+# rejects that if anything in the organisation already holds it —
+# "app_handle: App handle must be unique", which is confusing because the
+# conflict is usually with this very app.
+#
+# The app is identified by `client_id` above, so omitting the handle simply
+# leaves whatever the app already has. If you ever do need to change it, do it
+# in the Partner Dashboard.
+#
+# Note: the handle is what appears in
+# https://admin.shopify.com/store/<store>/apps/<handle>, which the OAuth
+# callback redirects to. If it is not "pinggo", set SHOPIFY_APP_HANDLE in the
+# app's environment to match.
 application_url = "https://shopify.getcreator.online"
 
 # Embedded — the app renders inside the Shopify admin.
@@ -61,4 +75,3 @@ api_version = "2026-07"
 embedded = false
 
 [build]
-include_config_on_deploy = true

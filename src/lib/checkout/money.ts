@@ -7,12 +7,34 @@
  * payment page that is not a cosmetic bug.
  */
 
-const MINOR_UNIT_DIGITS: Record<string, number> = {
-  INR: 2,
-}
+/**
+ * Decimal places for a currency, from the browser's own ICU data.
+ *
+ * Must agree with `minorUnitFactor` on the server, which derives it the same
+ * way. A hardcoded table is how this went wrong once already: most currencies
+ * have 2 places, but JPY, KRW and VND have none and KWD, BHD and TND have
+ * three, so ×100 would render ¥1,000 as ¥10.00.
+ */
+const digitsCache = new Map<string, number>()
 
 function digitsFor(currency: string): number {
-  return MINOR_UNIT_DIGITS[currency.toUpperCase()] ?? 2
+  const code = currency.toUpperCase()
+  const cached = digitsCache.get(code)
+  if (cached !== undefined) return cached
+
+  let digits = 2
+  try {
+    digits =
+      new Intl.NumberFormat("en", {
+        style: "currency",
+        currency: code,
+      }).resolvedOptions().maximumFractionDigits ?? 2
+  } catch {
+    digits = 2
+  }
+
+  digitsCache.set(code, digits)
+  return digits
 }
 
 /** Renders minor units as a localized currency string, e.g. "₹1,499.00". */
