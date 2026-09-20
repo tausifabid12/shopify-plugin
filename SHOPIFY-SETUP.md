@@ -262,37 +262,71 @@ on; the browser console for a failed call to `/checkout/public/config/...`.
 
 ## Embedded mode
 
-The app ships **not embedded** (`embedded = false` in `shopify.app.toml`), so
-Shopify opens it in its own tab rather than an iframe inside the admin.
+The app runs **embedded** — inside the Shopify admin iframe.
 
-That is a deliberate choice, not an oversight. An embedded app runs in a
-third-party context on `admin.shopify.com`, where two things break:
+That iframe is a third-party context, where the PingGo session cookie is
+neither stored nor sent. Shopify's own guidance is blunt about it: cookie
+sessions are "not available to you and never will be", and session tokens are
+required for embedded apps. So the session is established differently:
 
-1. **Session cookies don't come back.** The PingGo cookies are `SameSite=Lax`,
-   which browsers refuse to send inside a cross-site iframe. Login succeeds,
-   the redirect fires, the cookie never arrives, the proxy sees no session and
-   sends the merchant back to the login form. The visible symptom is a sign-in
-   button that appears to do nothing.
-2. **Shopify's OAuth page can't be framed.** Even with cookies fixed, the
-   install would fail at the consent screen.
+```
+Shopify admin iframe
+      │  App Bridge mints a session token (id_token), ~1 min TTL
+      ▼
+src/lib/shopify-session-token.ts   verifies it: HS256 with our client
+      │                            secret, aud, exp/nbf, iss vs dest
+      ▼  a shop domain we can trust
+POST /shopify-app/session          + SHOPIFY_APP_SESSION_SECRET
+      │
+      ▼  PingGo returns the JWT of the vendor who installed that store
+Set-Cookie … SameSite=None; Secure; Partitioned
+      │
+      ▼
+dashboard renders in the iframe
+```
 
-### What embedded would take
+The cookie is **partitioned** (CHIPS): the browser keys it to
+(admin.shopify.com, our origin), so it works inside the iframe and is invisible
+to the first-party site. That isolation is the point — unpartitioned
+third-party cookies are being removed by browsers anyway.
 
-Worth doing before public launch — merchants expect it — but it is its own
-piece of work, not a config flag:
+### Setup
 
-- **Partitioned cookies.** `SameSite=None; Secure; Partitioned` on the session
-  cookies (CHIPS), so they survive the iframe. Note that `SameSite=None` alone
-  is on borrowed time as browsers phase out third-party cookies.
-- **Break out for OAuth.** Detect the iframe and send the *top* window to the
-  Shopify consent URL — `window.top.location.href = installUrl` — rather than
-  navigating inside the frame.
-- **App Bridge.** Shopify's script for admin chrome, navigation and the session
-  token, which is the direction Shopify wants apps to go instead of cookies.
-- Set `embedded = true` again and redeploy.
+1. Generate one secret and put the **same value** in both places:
+   ```bash
+   openssl rand -base64 48
+   ```
+   - `SHOPIFY_APP_SESSION_SECRET` in the Shopify app's environment
+   - `SHOPIFY_APP_SESSION_SECRET` in `pinggo-server`'s environment
+2. Redeploy both.
+3. Partner Dashboard → Configuration → **Embed app in Shopify admin: ON**.
+4. Link the store **once**, top-level (see below).
 
-Until then, "open in its own tab" is a supported and perfectly functional
-configuration.
+### Linking a store the first time
+
+The initial link still happens outside the iframe, because Shopify's OAuth
+consent screen refuses to be framed. Open this in a normal browser tab:
+
+```
+https://shopify.getcreator.online/api/auth?shop=<store>.myshopify.com
+```
+
+Sign in to PingGo, approve the scopes, and the callback links the store and
+returns you to the app inside your admin. After that, opening PingGo from the
+Shopify admin works directly — the iframe mints its own session.
+
+If the embedded app shows **"Finish connecting your store"**, that link hasn't
+happened yet (or the store was uninstalled). The button on that screen opens
+the flow above in a new tab.
+
+### Why the callback now fails loudly
+
+The link step used to be best-effort: if the PingGo cookie was missing it was
+skipped, and the merchant was still sent to the dashboard — where nothing
+worked and nothing said why. That is exactly how a store ends up reporting
+"your Shopify store isn't connected" after an apparently successful install.
+It now redirects back with `?error=signin_required` or `?error=link_failed`
+instead of pretending to succeed.
 
 ## Running behind nginx
 

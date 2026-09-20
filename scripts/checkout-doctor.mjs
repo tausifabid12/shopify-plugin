@@ -65,6 +65,10 @@ const REQUIRED = [
   ["APP_URL", "Public HTTPS origin of this app (your tunnel URL)"],
   ["NEXT_PUBLIC_PINGGO_API_URL", "PingGo API base, ending in /api_v1"],
   ["NEXT_PUBLIC_CHECKOUT_APP_URL", "Same as APP_URL — where gateways send shoppers back"],
+  [
+    "SHOPIFY_APP_SESSION_SECRET",
+    "Shared secret with pinggo-server, for the embedded session. openssl rand -base64 48",
+  ],
 ]
 
 for (const [key, what] of REQUIRED) {
@@ -138,6 +142,28 @@ if (!existsSync(resolve(root, "shopify.app.toml"))) {
 
   if (/write_draft_orders/.test(toml)) ok("write_draft_orders is in the toml scopes")
   else bad("write_draft_orders missing from the toml", "tax and shipping quoting will 403")
+
+  // Embedded needs the session-minting path; unembedded doesn't.
+  const embedded = /^\s*embedded\s*=\s*true/m.test(toml)
+  if (embedded) {
+    const secret = env?.SHOPIFY_APP_SESSION_SECRET
+    if (!secret || isPlaceholder(secret)) {
+      bad(
+        "embedded = true but SHOPIFY_APP_SESSION_SECRET isn't set",
+        "the admin iframe can't start a session without it"
+      )
+    } else if (secret.length < 32) {
+      bad("SHOPIFY_APP_SESSION_SECRET is shorter than 32 characters")
+    } else {
+      ok("embedded = true, session secret present")
+    }
+    warn(
+      "Confirm 'Embed app in Shopify admin' is ON in the Partner Dashboard",
+      "Shopify reads the dashboard setting, not this file"
+    )
+  } else {
+    ok("embedded = false (app opens in its own tab)")
+  }
 
   const tomlAppUrl = /application_url\s*=\s*"([^"]*)"/.exec(toml)?.[1]?.replace(/\/+$/, "")
   if (tomlAppUrl && appUrl && tomlAppUrl !== appUrl) {

@@ -79,21 +79,46 @@ export async function GET(request: NextRequest) {
     }
 
     // ── 4. Link the store to the authenticated PingGo user (server-side) ──────
+    //
+    // This is the step that makes the whole app work: without it the backend
+    // has no store for this vendor, and every screen reports "your Shopify
+    // store isn't connected".
+    //
+    // It used to be best-effort — if the cookie was missing the link was
+    // skipped and the merchant was still sent to the dashboard, where nothing
+    // worked and nothing explained why. Both failure paths now surface.
     const pinggoToken = cookieStore.get(PINGGO_TOKEN_COOKIE)?.value
-    if (pinggoToken) {
-        try {
-            const link = await pinggoLinkStoreRequest(pinggoToken, {
-                shopDomain: shop,
-                accessToken,
-                scope,
-            })
-            if (!link.ok) {
-                console.error("[callback] PingGo rejected the Shopify store link:", link.json?.message)
-            }
-        } catch (err) {
-            // Non-fatal: the local session still works, but log for visibility.
-            console.error("[callback] Failed to link Shopify store to PingGo:", err)
+
+    if (!pinggoToken) {
+        // Most often: OAuth ran in a context where the sign-in cookie wasn't
+        // sent — an admin iframe, or a different browser profile. Send them
+        // back to sign in; `?shop=` resumes the install afterwards.
+        console.error("[callback] No PingGo session at callback — cannot link", shop)
+        return Response.redirect(
+            `${appUrl}/?shop=${encodeURIComponent(shop)}&error=signin_required`,
+            302
+        )
+    }
+
+    try {
+        const link = await pinggoLinkStoreRequest(pinggoToken, {
+            shopDomain: shop,
+            accessToken,
+            scope,
+        })
+        if (!link.ok) {
+            console.error("[callback] PingGo rejected the store link:", link.json?.message)
+            return Response.redirect(
+                `${appUrl}/?shop=${encodeURIComponent(shop)}&error=link_failed`,
+                302
+            )
         }
+    } catch (err) {
+        console.error("[callback] Failed to link Shopify store to PingGo:", err)
+        return Response.redirect(
+            `${appUrl}/?shop=${encodeURIComponent(shop)}&error=link_failed`,
+            302
+        )
     }
 
     // ── 5. Persist session & clear the nonce cookie ───────────────────────────
@@ -122,11 +147,20 @@ export async function GET(request: NextRequest) {
     ]
     if (isProduction) clearNonceParts.push("Secure")
 
-    // ── 5. Redirect into the app ──────────────────────────────────────────────
+    // ── 6. Back into the Shopify admin ────────────────────────────────────────
+    //
+    // The install runs top-level (Shopify's consent screen refuses to be
+    // framed), so on success we return the merchant to where they started:
+    // the app inside their admin. Landing them on a standalone dashboard tab
+    // instead would leave them wondering whether it worked.
+    const storeHandle = shop.replace(/\.myshopify\.com$/, "")
+    const appHandle = process.env.SHOPIFY_APP_HANDLE || "pinggo"
+    const destination = `https://admin.shopify.com/store/${storeHandle}/apps/${appHandle}`
+
     return new Response(null, {
         status: 302,
         headers: new Headers([
-            ["Location", `${appUrl}/dashboard`],
+            ["Location", destination],
             ["Set-Cookie", sessionCookieParts.join("; ")],
             ["Set-Cookie", clearNonceParts.join("; ")],
         ]),

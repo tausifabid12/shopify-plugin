@@ -1,19 +1,38 @@
 import { redirect } from "next/navigation"
 import { ShieldCheck } from "lucide-react"
 
+import { EmbeddedBootstrap } from "@/components/embedded-bootstrap"
 import { PinggoAuthForm } from "@/components/pinggo-auth-form"
 import { hasPinggoCredentials } from "@/lib/pinggo"
 
 export default async function Home({
   searchParams,
 }: {
-  searchParams: Promise<{ shop?: string }>
+  searchParams: Promise<{
+    shop?: string
+    host?: string
+    embedded?: string
+    id_token?: string
+  }>
 }) {
   if (await hasPinggoCredentials()) {
     redirect("/dashboard")
   }
 
-  const { shop } = await searchParams
+  const { shop, host, embedded, id_token: idToken } = await searchParams
+
+  /**
+   * Running inside the Shopify admin iframe.
+   *
+   * Shopify marks embedded loads with `embedded=1` and always sends `host`.
+   * There is no usable cookie here — third-party cookies do not survive the
+   * iframe — so instead of showing a sign-in form that could never persist a
+   * session, hand over to the bootstrap: it trades Shopify's session token for
+   * a PingGo one and moves on to the dashboard.
+   */
+  if (embedded === "1" || host) {
+    return <EmbeddedBootstrap urlIdToken={idToken} shop={shop} />
+  }
 
   return (
     <div className="flex min-h-svh">
